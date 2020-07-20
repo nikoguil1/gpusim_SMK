@@ -642,6 +642,10 @@ class gpgpu_sim : public gpgpu_t {
  public:
   unsigned long long gpu_sim_insn;
   unsigned long long gpu_tot_sim_insn;
+  //Nico: counters of executed instructions per kernel
+  unsigned long long *gpu_sim_insn_per_kernel;
+  unsigned long long *gpu_tot_sim_insn_per_kernel;
+  
   unsigned long long gpu_sim_insn_last_update;
   unsigned gpu_sim_insn_last_update_sid;
   occupancy_stats gpu_occupancy;

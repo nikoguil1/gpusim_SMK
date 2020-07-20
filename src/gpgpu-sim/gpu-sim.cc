@@ -976,6 +976,10 @@ void gpgpu_sim::init() {
   partiton_replys_in_parallel = 0;
   partiton_reqs_in_parallel_util = 0;
   gpu_sim_cycle_parition_util = 0;
+  
+  //Nico: 
+  gpu_sim_insn_per_kernel = new unsigned long long[10];
+  gpu_tot_sim_insn_per_kernel = new unsigned long long[10];
 
   reinit_clock_domains();
   gpgpu_ctx->func_sim->set_param_gpgpu_num_shaders(m_config.num_shader());
@@ -1016,6 +1020,9 @@ void gpgpu_sim::update_stats() {
   m_memory_stats->memlatstat_lat_pw();
   gpu_tot_sim_cycle += gpu_sim_cycle;
   gpu_tot_sim_insn += gpu_sim_insn;
+  //Nico: accumulating number of executed instruction per kernel
+  for (unsigned k = 0; k<10; k++)
+	  gpu_tot_sim_insn_per_kernel[k] += gpu_sim_insn_per_kernel[k];
   gpu_tot_issued_cta += m_total_cta_launched;
   partiton_reqs_in_parallel_total += partiton_reqs_in_parallel;
   partiton_replys_in_parallel_total += partiton_replys_in_parallel;
@@ -1029,6 +1036,9 @@ void gpgpu_sim::update_stats() {
   partiton_reqs_in_parallel_util = 0;
   gpu_sim_cycle_parition_util = 0;
   gpu_sim_insn = 0;
+  //Nico: reseting instrucion per kernel
+  for (unsigned k = 0; k<10; k++)
+	gpu_sim_insn_per_kernel[k] = 0;
   m_total_cta_launched = 0;
   gpu_completed_cta = 0;
   gpu_occupancy = occupancy_stats();
@@ -1220,7 +1230,19 @@ void gpgpu_sim::gpu_print_stat() {
   printf("gpu_tot_sim_insn = %lld\n", gpu_tot_sim_insn + gpu_sim_insn);
   printf("gpu_tot_ipc = %12.4f\n", (float)(gpu_tot_sim_insn + gpu_sim_insn) /
                                        (gpu_tot_sim_cycle + gpu_sim_cycle));
-  printf("gpu_tot_issued_cta = %lld\n",
+									  
+  // Nico: number of instructions and ipc per kernel
+  printf("Instrucions per kernel: ");
+  for (unsigned k=0; k<10;k++)
+	  printf("%d->%lld\t", k, gpu_tot_sim_insn_per_kernel[k] + gpu_sim_insn_per_kernel[k]);
+ printf("\n");
+ printf("ipc per kernel: ");
+  for (unsigned k=0; k<10;k++)
+	  printf("%d->%12.4f\t", k, (double) (gpu_tot_sim_insn_per_kernel[k] + gpu_sim_insn_per_kernel[k])/
+		(double)(gpu_tot_sim_cycle + gpu_sim_cycle));
+ printf("\n");
+ 
+ printf("gpu_tot_issued_cta = %lld\n",
          gpu_tot_issued_cta + m_total_cta_launched);
   printf("gpu_occupancy = %.4f%% \n", gpu_occupancy.get_occ_fraction() * 100);
   printf("gpu_tot_occupancy = %.4f%% \n",
@@ -1903,7 +1925,7 @@ void gpgpu_sim::cycle() {
         fflush(stdout);
         last_liveness_message_time = elapsed_time;
       }
-      visualizer_printstat();
+	  visualizer_printstat();
       m_memory_stats->memlatstat_lat_pw();
       if (m_config.gpgpu_runtime_stat &&
           (m_config.gpu_runtime_stat_flag != 0)) {

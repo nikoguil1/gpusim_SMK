@@ -479,7 +479,7 @@ void shader_core_ctx::init_warps(unsigned cta_id, unsigned start_thread,
         start_pc = pc;
       }
 
-      m_warp[i].init(start_pc, cta_id, i, active_threads, m_dynamic_warp_id);
+      m_warp[i].init(start_pc, cta_id, i, active_threads, m_dynamic_warp_id, kernel_id);
       ++m_dynamic_warp_id;
       m_not_completed += n_active;
       ++m_active_warps;
@@ -776,7 +776,12 @@ void shader_core_ctx::decode() {
   if (m_inst_fetch_buffer.m_valid) {
     // decode 1 or 2 instructions and place them into ibuffer
     address_type pc = m_inst_fetch_buffer.m_pc;
-    const warp_inst_t *pI1 = m_gpu->gpgpu_ctx->ptx_fetch_inst(pc);
+	unsigned kernel_id = m_inst_fetch_buffer.m_kernel_id; // Nico: read kernel id from fetch buffer;
+	warp_inst_t *pIt1 = (warp_inst_t *) m_gpu->gpgpu_ctx->ptx_fetch_inst(pc); // Nico:  Get a no-constant instance
+	if (pIt1) // Nico: Only if instruction exits
+		pIt1->m_kernel_id = kernel_id; // Nico: associate kernel id with instruction
+    const warp_inst_t *pI1 = pIt1; // Nico: constant instance (as in original code)
+	//const warp_inst_t *pI1 = m_gpu->gpgpu_ctx->ptx_fetch_inst(pc); Nico: (previous code)
     m_warp[m_inst_fetch_buffer.m_warp_id].ibuffer_fill(0, pI1);
     m_warp[m_inst_fetch_buffer.m_warp_id].inc_inst_in_pipeline();
     if (pI1) {
@@ -786,8 +791,12 @@ void shader_core_ctx::decode() {
       } else if (pI1->oprnd_type == FP_OP) {
         m_stats->m_num_FPdecoded_insn[m_sid]++;
       }
-      const warp_inst_t *pI2 =
-          m_gpu->gpgpu_ctx->ptx_fetch_inst(pc + pI1->isize);
+	  warp_inst_t *pIt2 = (warp_inst_t *) m_gpu->gpgpu_ctx->ptx_fetch_inst(pc + pI1->isize); // Nico:  Get a no-constant instance
+	  if (pIt2) // Nico: Only if instruction exits
+		pIt2->m_kernel_id = kernel_id; // Nico soporte SMK anota el id del kernel en la instruccion
+      const warp_inst_t *pI2 = pIt2; // Nico: constant instance (as in original code)
+      //const warp_inst_t *pI2 =
+      //    m_gpu->gpgpu_ctx->ptx_fetch_inst(pc + pI1->isize); Nico: previous code
       if (pI2) {
         m_warp[m_inst_fetch_buffer.m_warp_id].ibuffer_fill(1, pI2);
         m_warp[m_inst_fetch_buffer.m_warp_id].inc_inst_in_pipeline();
@@ -808,7 +817,8 @@ void shader_core_ctx::fetch() {
     if (m_L1I->access_ready()) {
       mem_fetch *mf = m_L1I->next_access();
       m_warp[mf->get_wid()].clear_imiss_pending();
-      m_inst_fetch_buffer = ifetch_buffer_t(
+	  // Nico: a new parameter tp pass kernel is id added to next funcion 
+      m_inst_fetch_buffer = ifetch_buffer_t(m_warp[mf->get_wid()].get_kernel_id(),
           m_warp[mf->get_wid()].get_pc(), mf->get_access_size(), mf->get_wid());
       assert(m_warp[mf->get_wid()].get_pc() ==
              (mf->get_addr() -
@@ -850,11 +860,15 @@ void shader_core_ctx::fetch() {
 
         // this code fetches instructions from the i-cache or generates memory
         // requests
+		//Nico: local variable
+		unsigned kernel_id;
         if (!m_warp[warp_id].functional_done() &&
             !m_warp[warp_id].imiss_pending() &&
             m_warp[warp_id].ibuffer_empty()) {
           address_type pc = m_warp[warp_id].get_pc();
           address_type ppc = pc + PROGRAM_MEM_START;
+		  //Nico
+		  kernel_id = m_warp[warp_id].get_kernel_id();
           unsigned nbytes = 16;
           unsigned offset_in_block =
               pc & (m_config->m_L1I_config.get_line_sz() - 1);
@@ -878,7 +892,7 @@ void shader_core_ctx::fetch() {
             m_warp[warp_id].set_last_fetch(m_gpu->gpu_sim_cycle);
           } else if (status == HIT) {
             m_last_warp_fetched = warp_id;
-            m_inst_fetch_buffer = ifetch_buffer_t(pc, nbytes, warp_id);
+            m_inst_fetch_buffer = ifetch_buffer_t(kernel_id, pc, nbytes, warp_id);
             m_warp[warp_id].set_last_fetch(m_gpu->gpu_sim_cycle);
             delete mf;
           } else {
@@ -1595,8 +1609,13 @@ void shader_core_ctx::warp_inst_complete(const warp_inst_t &inst) {
   else
     m_stats->m_num_sim_insn[m_sid] += inst.active_count();
 
+  // Nico: add instruction to cluster kernel counter 
+  m_cluster-> add_inst(inst.m_kernel_id, inst.active_count());
+
   m_stats->m_num_sim_winsn[m_sid]++;
   m_gpu->gpu_sim_insn += inst.active_count();
+  //Nico
+  m_gpu->gpu_sim_insn_per_kernel[inst.m_kernel_id] += inst.active_count();
   inst.completed(m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle);
 }
 
@@ -3928,6 +3947,9 @@ simt_core_cluster::simt_core_cluster(class gpgpu_sim *gpu, unsigned cluster_id,
   //Nico: Allocate memory for cont_CTAs. I assume 10 is the maximum number of concurrent running kernels
   // Also, kernels id must go to 1 to 10
   cont_CTAs = new unsigned[10];
+  
+  //Nico: Allocate memory for kernel instruction counter
+  cont_inst = new long long[10];
   
   m_core = new shader_core_ctx *[config->n_simt_cores_per_cluster];
   for (unsigned i = 0; i < config->n_simt_cores_per_cluster; i++) {

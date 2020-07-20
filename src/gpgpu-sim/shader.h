@@ -123,7 +123,7 @@ class shd_warp_t {
   }
   void init(address_type start_pc, unsigned cta_id, unsigned wid,
             const std::bitset<MAX_WARP_SIZE> &active,
-            unsigned dynamic_warp_id) {
+            unsigned dynamic_warp_id, unsigned kid) {
     m_cta_id = cta_id;
     m_warp_id = wid;
     m_dynamic_warp_id = dynamic_warp_id;
@@ -133,6 +133,9 @@ class shd_warp_t {
     n_completed -= active.count();  // active threads are not yet completed
     m_active_threads = active;
     m_done_exit = false;
+	
+	//Nico: kernel id info is included
+	kernel_id = kid;
 
     // Jin: cdp support
     m_cdp_latency = 0;
@@ -236,6 +239,9 @@ class shd_warp_t {
 
   unsigned get_dynamic_warp_id() const { return m_dynamic_warp_id; }
   unsigned get_warp_id() const { return m_warp_id; }
+  
+  // Nico: method to obtain kernel id
+  unsigned get_kernel_id() {return kernel_id;}
 
  private:
   static const unsigned IBUFFER_SIZE = 2;
@@ -275,6 +281,9 @@ class shd_warp_t {
   unsigned m_stores_outstanding;  // number of store requests sent but not yet
                                   // acknowledged
   unsigned m_inst_in_pipeline;
+  
+  // Nico: kernel id is declares as public
+  unsigned kernel_id;
 
   // Jin: cdp support
  public:
@@ -1004,13 +1013,16 @@ struct insn_latency_info {
 struct ifetch_buffer_t {
   ifetch_buffer_t() { m_valid = false; }
 
-  ifetch_buffer_t(address_type pc, unsigned nbytes, unsigned warp_id) {
+  // Nico: a new filed is added to struct
+  ifetch_buffer_t(unsigned kernel_id, address_type pc, unsigned nbytes, unsigned warp_id) {
     m_valid = true;
     m_pc = pc;
     m_nbytes = nbytes;
     m_warp_id = warp_id;
+	m_kernel_id = kernel_id;
   }
 
+  unsigned m_kernel_id;
   bool m_valid;
   address_type m_pc;
   unsigned m_nbytes;
@@ -2220,7 +2232,7 @@ class simt_core_cluster {
   float get_current_occupancy(unsigned long long &active,
                               unsigned long long &total) const;
 							  
-  // Nico: method to update the number of kernel ctas running in a cluster
+  // Nico: methods to update the number of kernel ctas running in a cluster
   // Aparently lower kernel id is 1 in gpgpusim
   void inc_cont_CTAs(unsigned kernel_id)
   {
@@ -2230,6 +2242,18 @@ class simt_core_cluster {
   void dec_cont_CTAs(unsigned kernel_id)
   {
 	  cont_CTAs[kernel_id-1]--;
+  }
+  
+  // Nico: method to add new instructions to counter  
+  void add_inst(unsigned kernel_id, unsigned num_inst)
+  {
+	  cont_inst[kernel_id-1] += (long long)num_inst;
+  }
+  
+  // Nico: method to obtain the number of instructions executed by a kernel 
+  long long get_num_inst(unsigned kernel_id)
+  {
+	  return cont_inst[kernel_id-1];
   }
 
  private:
@@ -2248,6 +2272,8 @@ class simt_core_cluster {
   // array positions are indexed with kernel id 
   unsigned *cont_CTAs; // CTA counter of running CTAs on cluster for two kernels.
   
+  //Nico: array rto count number of instructions executed by kernel
+  long long *cont_inst;
 };
 
 class shader_memory_interface : public mem_fetch_interface {

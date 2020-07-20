@@ -1180,6 +1180,9 @@ class warp_inst_t : public inst_t {
   // Jin: cdp support
  public:
   int m_is_cdp;
+  
+  //Nico: instruction support to store kernel_id
+  unsigned m_kernel_id;
 };
 
 void move_warp(warp_inst_t *&dst, warp_inst_t *&src);
