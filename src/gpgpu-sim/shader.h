@@ -2243,18 +2243,6 @@ class simt_core_cluster {
   {
 	  cont_CTAs[kernel_id-1]--;
   }
-  
-  // Nico: method to add new instructions to counter  
-  void add_inst(unsigned kernel_id, unsigned num_inst)
-  {
-	  cont_inst[kernel_id-1] += (long long)num_inst;
-  }
-  
-  // Nico: method to obtain the number of instructions executed by a kernel 
-  long long get_num_inst(unsigned kernel_id)
-  {
-	  return cont_inst[kernel_id-1];
-  }
 
  private:
   unsigned m_cluster_id;
@@ -2272,8 +2260,6 @@ class simt_core_cluster {
   // array positions are indexed with kernel id 
   unsigned *cont_CTAs; // CTA counter of running CTAs on cluster for two kernels.
   
-  //Nico: array rto count number of instructions executed by kernel
-  long long *cont_inst;
 };
 
 class shader_memory_interface : public mem_fetch_interface {

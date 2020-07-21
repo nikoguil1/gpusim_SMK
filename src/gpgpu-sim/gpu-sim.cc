@@ -978,8 +978,9 @@ void gpgpu_sim::init() {
   gpu_sim_cycle_parition_util = 0;
   
   //Nico: 
-  gpu_sim_insn_per_kernel = new unsigned long long[10];
-  gpu_tot_sim_insn_per_kernel = new unsigned long long[10];
+  gpgpu_sim_config const config = get_config();
+  gpu_sim_insn_per_kernel = new unsigned long long[config.get_max_concurrent_kernel()];
+  gpu_tot_sim_insn_per_kernel = new unsigned long long[config.get_max_concurrent_kernel()];
 
   reinit_clock_domains();
   gpgpu_ctx->func_sim->set_param_gpgpu_num_shaders(m_config.num_shader());
@@ -1015,13 +1016,14 @@ void gpgpu_sim::init() {
   }
 #endif
 }
-
+ 
 void gpgpu_sim::update_stats() {
   m_memory_stats->memlatstat_lat_pw();
   gpu_tot_sim_cycle += gpu_sim_cycle;
   gpu_tot_sim_insn += gpu_sim_insn;
   //Nico: accumulating number of executed instruction per kernel
-  for (unsigned k = 0; k<10; k++)
+  gpgpu_sim_config const config = get_config();
+  for (unsigned k = 0; k<config.get_max_concurrent_kernel(); k++)
 	  gpu_tot_sim_insn_per_kernel[k] += gpu_sim_insn_per_kernel[k];
   gpu_tot_issued_cta += m_total_cta_launched;
   partiton_reqs_in_parallel_total += partiton_reqs_in_parallel;
@@ -1036,9 +1038,11 @@ void gpgpu_sim::update_stats() {
   partiton_reqs_in_parallel_util = 0;
   gpu_sim_cycle_parition_util = 0;
   gpu_sim_insn = 0;
+  
   //Nico: reseting instrucion per kernel
-  for (unsigned k = 0; k<10; k++)
+  for (unsigned k = 0; k<config.get_max_concurrent_kernel(); k++)
 	gpu_sim_insn_per_kernel[k] = 0;
+
   m_total_cta_launched = 0;
   gpu_completed_cta = 0;
   gpu_occupancy = occupancy_stats();
@@ -1232,12 +1236,13 @@ void gpgpu_sim::gpu_print_stat() {
                                        (gpu_tot_sim_cycle + gpu_sim_cycle));
 									  
   // Nico: number of instructions and ipc per kernel
+   gpgpu_sim_config const config = get_config();
   printf("Instrucions per kernel: ");
-  for (unsigned k=0; k<10;k++)
+  for (unsigned k=0; k<config.get_max_concurrent_kernel();k++)
 	  printf("%d->%lld\t", k, gpu_tot_sim_insn_per_kernel[k] + gpu_sim_insn_per_kernel[k]);
  printf("\n");
  printf("ipc per kernel: ");
-  for (unsigned k=0; k<10;k++)
+  for (unsigned k=0; k<config.get_max_concurrent_kernel();k++)
 	  printf("%d->%12.4f\t", k, (double) (gpu_tot_sim_insn_per_kernel[k] + gpu_sim_insn_per_kernel[k])/
 		(double)(gpu_tot_sim_cycle + gpu_sim_cycle));
  printf("\n");

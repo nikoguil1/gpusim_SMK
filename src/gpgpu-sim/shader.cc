@@ -1609,9 +1609,6 @@ void shader_core_ctx::warp_inst_complete(const warp_inst_t &inst) {
   else
     m_stats->m_num_sim_insn[m_sid] += inst.active_count();
 
-  // Nico: add instruction to cluster kernel counter 
-  m_cluster-> add_inst(inst.m_kernel_id, inst.active_count());
-
   m_stats->m_num_sim_winsn[m_sid]++;
   m_gpu->gpu_sim_insn += inst.active_count();
   //Nico
@@ -3944,12 +3941,9 @@ simt_core_cluster::simt_core_cluster(class gpgpu_sim *gpu, unsigned cluster_id,
   m_stats = stats;
   m_memory_stats = mstats;
   
-  //Nico: Allocate memory for cont_CTAs. I assume 10 is the maximum number of concurrent running kernels
-  // Also, kernels id must go to 1 to 10
-  cont_CTAs = new unsigned[10];
-  
-  //Nico: Allocate memory for kernel instruction counter
-  cont_inst = new long long[10];
+  //Nico: SMK support, an array for cluster is created with a position per kernel
+  gpgpu_sim_config const gpu_config = gpu->get_config();
+  cont_CTAs = new unsigned[gpu_config.get_max_concurrent_kernel()]; 
   
   m_core = new shader_core_ctx *[config->n_simt_cores_per_cluster];
   for (unsigned i = 0; i < config->n_simt_cores_per_cluster; i++) {
@@ -4024,6 +4018,8 @@ unsigned simt_core_cluster::issue_block2core_SMK() {
   unsigned num_blocks_issued = 0; 
   kernel_info_t *kernel; 
   
+  gpgpu_sim_config const gpu_config = m_gpu->get_config();
+  
   for (unsigned k = 0; k < m_gpu->get_num_running_kernels(); k++) {
 
 	kernel = m_gpu->select_alternative_kernel(k);
@@ -4031,7 +4027,7 @@ unsigned simt_core_cluster::issue_block2core_SMK() {
 	if (kernel != NULL) {
 		
 		//printf("cluster=%d Kernel=%d cont_CTAs=%d max_CTAS=%d\n", m_cluster_id, kernel->get_uid(), cont_CTAs[kernel->get_uid()-1], kernel->get_max_ctas());
-		assert(kernel->get_uid() <= 10 && kernel->get_uid() > 0); // Nico: Max allowed kernel id is 10: see simt_core_cluster::simt_core_cluster
+		assert(kernel->get_uid() <= gpu_config.get_max_concurrent_kernel() && kernel->get_uid() > 0); // Nico: Max allowed kernel id m_config->get_max_concurrent_kernel() see simt_core_cluster::simt_core_cluster
 		
 		if (cont_CTAs[kernel->get_uid()-1] < kernel->get_max_ctas()) { 
 		
