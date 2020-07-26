@@ -638,7 +638,16 @@ void increment_x_then_y_then_z(dim3 &i, const dim3 &bound) {
 
 void gpgpu_sim::launch(kernel_info_t *kinfo) {
   unsigned cta_size = kinfo->threads_per_cta();
-  kinfo->set_max_ctas(4);
+  switch (kinfo->get_uid()){
+    case 1: kinfo->set_max_ctas(5);
+            break;
+    case 2: kinfo->set_max_ctas(3);
+            break;
+    default:
+            printf("Too many kernels");
+            exit(-1);
+  }
+
   if (cta_size > m_shader_config->n_thread_per_shader) {
     printf(
         "Execution error: Shader kernel CTA (block) size is too large for "
@@ -1221,6 +1230,35 @@ void gpgpu_sim::clear_executed_kernel_info() {
   m_executed_kernel_names.clear();
   m_executed_kernel_uids.clear();
 }
+
+void gpgpu_sim::print_only_ipc_stats(kernel_info_t *kernel)
+{
+// Nico: number of instructions and ipc per kernel
+  gpgpu_sim_config const config = get_config();
+  printf("Coexecuting kernels: (%d, %d)->%s ", kernel->get_uid(), kernel->get_max_ctas(), kernel->name().c_str());
+  for (unsigned k=0; k < m_running_kernels.size(); k++)
+    if (m_running_kernels[k] != NULL)
+      printf("/t (%d, %d)->%s", m_running_kernels[k]->get_uid(), m_running_kernels[k]->get_max_ctas(), m_running_kernels[k]->name().c_str());
+  printf("\n");
+  printf("First Kernel finished: id=%d, name=%s\n", kernel->get_uid(), kernel->name().c_str());
+  printf("IPC: gpu_tot_sim_cycle = %lld\n", gpu_tot_sim_cycle + gpu_sim_cycle);
+  printf("IPC: Instrucions per kernel: ");
+  for (unsigned k=0; k<config.get_max_concurrent_kernel();k++) {
+    if (gpu_sim_insn_per_kernel[k] > 0)
+	    printf("%d->%lld\t", k, gpu_tot_sim_insn_per_kernel[k] + gpu_sim_insn_per_kernel[k]);
+  }
+ printf("\n");
+ printf("IPC: ipc per kernel: ");
+  for (unsigned k=0; k<config.get_max_concurrent_kernel();k++){
+    if (gpu_sim_insn_per_kernel[k] > 0)
+	    printf("%d->%12.4f\t", k, (double) (gpu_tot_sim_insn_per_kernel[k] + gpu_sim_insn_per_kernel[k])/
+		(double)(gpu_tot_sim_cycle + gpu_sim_cycle));
+  }
+ printf("\n");
+ fflush(stdout);
+ assert(0);
+}
+
 void gpgpu_sim::gpu_print_stat() {
   FILE *statfout = stdout;
 
@@ -1236,7 +1274,7 @@ void gpgpu_sim::gpu_print_stat() {
                                        (gpu_tot_sim_cycle + gpu_sim_cycle));
 									  
   // Nico: number of instructions and ipc per kernel
-   gpgpu_sim_config const config = get_config();
+  gpgpu_sim_config const config = get_config();
   printf("Instrucions per kernel: ");
   for (unsigned k=0; k<config.get_max_concurrent_kernel();k++)
 	  printf("%d->%lld\t", k, gpu_tot_sim_insn_per_kernel[k] + gpu_sim_insn_per_kernel[k]);

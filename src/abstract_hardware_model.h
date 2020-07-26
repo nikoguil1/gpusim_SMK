@@ -195,6 +195,9 @@ class kernel_info_t {
       std::map<std::string, const struct textureInfo *> nameToTextureInfo);
   ~kernel_info_t();
 
+  //Nico
+  unsigned get_num_cta_running() {return  m_num_cores_running;};
+  
   void inc_running() { m_num_cores_running++; }
   void dec_running() {
     assert(m_num_cores_running > 0);
@@ -331,6 +334,11 @@ class kernel_info_t {
   unsigned long long start_cycle;
   unsigned long long end_cycle;
   unsigned m_launch_latency;
+
+  // Nico: flag to indicate kernel has been evicted (or finished): This way we can detect when it stops to obtain current ipc 
+   bool is_evicted;
+  // Nico: flag to indicated when the kernel jas been reschduled (first cta has been assigned to core after previous eviction (or initial scheduling) 
+   bool is_scheduled;
 
   mutable bool cache_config_set;
 };

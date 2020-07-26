@@ -2532,8 +2532,8 @@ void shader_core_ctx::register_cta_thread_exit(unsigned cta_num,
     m_n_active_cta--;
     m_barriers.deallocate_barrier(cta_num);
     shader_CTA_count_unlog(m_sid, 1);
-	//Nico: decrease the number of running CTAs
-	m_cluster->dec_cont_CTAs(kernel->get_uid());
+	  //Nico: decrease the number of running CTAs
+	  m_cluster->dec_cont_CTAs(kernel->get_uid());
 
     SHADER_DPRINTF(
         LIVENESS,
@@ -2552,12 +2552,14 @@ void shader_core_ctx::register_cta_thread_exit(unsigned cta_num,
       if (kernel != m_kernel) {
         assert(m_kernel == NULL || !m_gpu->kernel_more_cta_left(m_kernel));
       }
+
       m_kernel = NULL;
     }
 
     // Jin: for concurrent kernels on sm
     release_shader_resource_1block(cta_num, *kernel);
     kernel->dec_running();
+    printf("Decrementando %d %d\n", kernel->get_uid(), kernel->get_num_cta_running());
     if (!m_gpu->kernel_more_cta_left(kernel)) {
       if (!kernel->running()) {
         SHADER_DPRINTF(LIVENESS,
@@ -4019,33 +4021,61 @@ unsigned simt_core_cluster::issue_block2core_SMK() {
   kernel_info_t *kernel; 
   
   gpgpu_sim_config const gpu_config = m_gpu->get_config();
+
+  // Detect if a kernel has been evicted 
+
+  for (unsigned k = 0; k < m_gpu->get_num_running_kernels(); k++) {
+
+	  kernel = m_gpu->select_alternative_kernel(k);
+
+    if (kernel != NULL) {
+
+			/*if (m_gpu->kernel_more_cta_left(kernel) == false) 		
+        printf("Aqui\n");
+      if (kernel->done() == true)
+          printf("Aqui\n"); 
+      */
+      if (kernel->get_num_cta_running() == 0 && kernel->is_scheduled){
+        kernel->is_evicted = true;
+        kernel->is_scheduled = false;
+      }
+     
+      if (kernel->is_evicted == false && kernel->done() == true){ //Realmente done() mira que no este ejecutandose en core y además no le queden ctas
+        kernel->is_evicted= true;
+        //printf("Showing ipc of all kernels\n");
+        //m_gpu->print_stats(); // Nico: print ipc of all kernels;
+      }
+    }
+  }
   
   for (unsigned k = 0; k < m_gpu->get_num_running_kernels(); k++) {
 
-	kernel = m_gpu->select_alternative_kernel(k);
+	  kernel = m_gpu->select_alternative_kernel(k);
 	
-	if (kernel != NULL) {
+	  if (kernel != NULL) {
 		
-		//printf("cluster=%d Kernel=%d cont_CTAs=%d max_CTAS=%d\n", m_cluster_id, kernel->get_uid(), cont_CTAs[kernel->get_uid()-1], kernel->get_max_ctas());
-		assert(kernel->get_uid() <= gpu_config.get_max_concurrent_kernel() && kernel->get_uid() > 0); // Nico: Max allowed kernel id m_config->get_max_concurrent_kernel() see simt_core_cluster::simt_core_cluster
+		  //printf("cluster=%d Kernel=%d cont_CTAs=%d max_CTAS=%d\n", m_cluster_id, kernel->get_uid(), cont_CTAs[kernel->get_uid()-1], kernel->get_max_ctas());
+		  assert(kernel->get_uid() <= gpu_config.get_max_concurrent_kernel() && kernel->get_uid() > 0); // Nico: Max allowed kernel id m_config->get_max_concurrent_kernel() see simt_core_cluster::simt_core_cluster
 		
-		if (cont_CTAs[kernel->get_uid()-1] < kernel->get_max_ctas()) { 
+		  if (cont_CTAs[kernel->get_uid()-1] < kernel->get_max_ctas()) { 
 		
-			for (unsigned i = 0; i <= m_config->n_simt_cores_per_cluster; i++) {
-				unsigned core = (i + m_cta_issue_next_core + 1) % m_config->n_simt_cores_per_cluster;	
-				assert(m_core[core]->can_issue_1block(*kernel)); // Nico, estar seguro quese ha calculado bien el numero de ctas per cluster
-				if (m_gpu->kernel_more_cta_left(kernel) && m_core[core]->can_issue_1block(*kernel)) {		
-					m_core[core]->issue_block2core(*kernel);
-					inc_cont_CTAs(kernel->get_uid());
-					printf("KerneliId=%2d cluster=%2d core=%2d num_ctas=%d\n", kernel->get_uid(), m_cluster_id, core, cont_CTAs[kernel->get_uid()-1]);
-					num_blocks_issued++;
-					m_cta_issue_next_core = core;
-					k = m_gpu->get_num_running_kernels();
-					break;
-				}
-			}
-		}
-	}
+		  	for (unsigned i = 0; i <= m_config->n_simt_cores_per_cluster; i++) {
+				  unsigned core = (i + m_cta_issue_next_core + 1) % m_config->n_simt_cores_per_cluster;	
+          //if (!m_core[core]->can_issue_1block(*kernel))
+				   // assert(m_core[core]->can_issue_1block(*kernel)); // Nico, estar seguro quese ha calculado bien el numero de ctas per cluster
+				  if (m_gpu->kernel_more_cta_left(kernel) && m_core[core]->can_issue_1block(*kernel)) {
+            kernel->is_scheduled = true;
+				  	m_core[core]->issue_block2core(*kernel);
+				  	inc_cont_CTAs(kernel->get_uid());
+				  	printf("KerneliId=%2d cluster=%2d core=%2d num_ctas=%d, active_ctas=%d \n", kernel->get_uid(), m_cluster_id, core, cont_CTAs[kernel->get_uid()-1], kernel->get_num_cta_running());
+			  		num_blocks_issued++;
+			  		m_cta_issue_next_core = core;
+			  		k = m_gpu->get_num_running_kernels();
+			  		break;
+			  	}
+		  	}
+	  	}
+  	}
   }
   return num_blocks_issued;
 }  

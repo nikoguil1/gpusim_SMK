@@ -501,6 +501,10 @@ class gpgpu_sim : public gpgpu_t {
             (gpu_completed_cta >= m_config.gpu_max_completed_cta_opt));
   }
   void print_stats();
+
+  //Nico
+  void print_only_ipc_stats(kernel_info_t *kernel);
+
   void update_stats();
   void deadlock_check();
   void inc_completed_cta() { gpu_completed_cta++; }
