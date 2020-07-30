@@ -355,6 +355,7 @@ class gpgpu_sim_config : public power_config,
     snprintf(buf, 1024, "gpgpusim_visualizer__%s.log.gz", date);
     g_visualizer_filename = strdup(buf);
 
+
     m_valid = true;
   }
 
@@ -369,6 +370,9 @@ class gpgpu_sim_config : public power_config,
   size_t pending_launch_count_limit() const {
     return runtime_pending_launch_count_limit;
   }
+
+  unsigned get_smk_mctas_kernel1() {return gpu_smk_mctas_kernel1;}
+  unsigned get_smk_mctas_kernel2() {return gpu_smk_mctas_kernel2;}
 
  private:
   void init_clock_domains(void);
@@ -423,6 +427,11 @@ class gpgpu_sim_config : public power_config,
   unsigned long long liveness_message_freq;
 
   friend class gpgpu_sim;
+
+  // Nico: max number of ctas per kernel that can be ruuning in a cluster
+  unsigned gpu_smk_mctas_kernel1;
+  unsigned gpu_smk_mctas_kernel2;
+  char *gpu_smk_stats_filename;
 };
 
 struct occupancy_stats {

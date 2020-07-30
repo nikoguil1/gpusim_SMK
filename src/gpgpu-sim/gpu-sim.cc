@@ -620,6 +620,15 @@ void gpgpu_sim_config::reg_options(option_parser_t opp) {
   option_parser_register(opp, "-gpgpu_cdp_enabled", OPT_BOOL,
                          &(gpgpu_ctx->device_runtime->g_cdp_enabled),
                          "Turn on CDP", "0");
+
+  //Nico: reading max_ctas_per_cluster
+  option_parser_register(opp, "-gpgpu_smk_mctas_kernel1", OPT_INT32, 
+                        &gpu_smk_mctas_kernel1, "Max ctas per cluster of kernel1", "0");
+  option_parser_register(opp, "-gpgpu_smk_mctas_kernel2", OPT_INT32, 
+                        &gpu_smk_mctas_kernel2, "Max ctas per cluster of kernel2", "0");
+  option_parser_register(opp, "-gpgpu_smk_stats_filename", OPT_CSTR, 
+                        &gpu_smk_stats_filename, "Output file with coexecution results", NULL);                  
+
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -637,11 +646,15 @@ void increment_x_then_y_then_z(dim3 &i, const dim3 &bound) {
 }
 
 void gpgpu_sim::launch(kernel_info_t *kinfo) {
+
   unsigned cta_size = kinfo->threads_per_cta();
+
+  
+  //Nico: Assign max number of ctas running in a cluster
   switch (kinfo->get_uid()){
-    case 1: kinfo->set_max_ctas(5);
+    case 1: kinfo->set_max_ctas(m_config.gpu_smk_mctas_kernel1);
             break;
-    case 2: kinfo->set_max_ctas(3);
+    case 2: kinfo->set_max_ctas(m_config.gpu_smk_mctas_kernel2);
             break;
     default:
             printf("Too many kernels");
@@ -1233,8 +1246,54 @@ void gpgpu_sim::clear_executed_kernel_info() {
 
 void gpgpu_sim::print_only_ipc_stats(kernel_info_t *kernel)
 {
-// Nico: number of instructions and ipc per kernel
-  gpgpu_sim_config const config = get_config();
+
+  FILE *fp;
+
+  if (m_config.gpu_smk_stats_filename == NULL) {
+    printf("Error: ouput file stats in NULL\n");
+    return;
+  } 
+
+  if ((fp = fopen(m_config.gpu_smk_stats_filename, "a")) == NULL) {
+    printf("Error: file %s cannot be opened for writing\n");
+    return;
+  }
+  
+  // Nico: number of instructions and ipc per kernel
+  
+  //fprintf(fp, "k1_name, k1_max_ctas, k1_launched_ctas, k2_name, k2_max_ctas, k2_launched_ctas, kernel_complete_name, num_cycles, k1_inst1, k2_inst2, k1_ipc, k2_ipc\n");
+
+  if (kernel->get_uid() == 1){ // If first launched kernel has finished
+    fprintf(fp, "%s,%d,%d,", kernel->name().c_str(), kernel->get_max_ctas(), kernel->get_next_cta_id_single()); // Print info of first launced kernek
+    if (m_running_kernels[1] != NULL) // Thid id the kernel with uid=2 
+      fprintf(fp, "%s,%d,%d,", m_running_kernels[1]->name().c_str(), m_running_kernels[1]->get_max_ctas(), m_running_kernels[1]->get_next_cta_id_single()); // Print info of second launched kernel
+    else
+      fprintf(fp, "None,0,0,");
+  } else {
+    if (m_running_kernels[0] != NULL) // First kernel has been launched? 
+      fprintf(fp,"%s,%d,%d,", m_running_kernels[0]->name().c_str(), m_running_kernels[0]->get_max_ctas(), m_running_kernels[0]->get_next_cta_id_single());
+    else
+      fprintf(fp, "None,0,0,");
+    fprintf(fp, "%s,%d,%d,", kernel->name().c_str(), kernel->get_max_ctas(), kernel->get_next_cta_id_single()); // Second launched kernel has finished. Print info.
+  }
+
+  fprintf(fp, "%s,%lld,",  kernel->name().c_str(), gpu_tot_sim_cycle + gpu_sim_cycle);
+
+  fprintf(fp, "%lld,%lld,", gpu_tot_sim_insn_per_kernel[1] + gpu_sim_insn_per_kernel[1],  gpu_tot_sim_insn_per_kernel[2] + gpu_sim_insn_per_kernel[2]);
+  
+  for (unsigned k=1; k<3;k++)
+    if (gpu_sim_insn_per_kernel[k] > 0) {
+	    fprintf(fp, "%.2f,", k, (double) (gpu_tot_sim_insn_per_kernel[k] + gpu_sim_insn_per_kernel[k])/
+		(double)(gpu_tot_sim_cycle + gpu_sim_cycle));
+    } 
+    else
+      fprintf(fp, "0.0,");
+
+  fprintf(fp, "\n");
+  fclose(fp);
+
+/*
+
   printf("Coexecuting kernels: (%d, %d)->%s ", kernel->get_uid(), kernel->get_max_ctas(), kernel->name().c_str());
   for (unsigned k=0; k < m_running_kernels.size(); k++)
     if (m_running_kernels[k] != NULL)
@@ -1244,7 +1303,7 @@ void gpgpu_sim::print_only_ipc_stats(kernel_info_t *kernel)
   printf("IPC: gpu_tot_sim_cycle = %lld\n", gpu_tot_sim_cycle + gpu_sim_cycle);
   printf("IPC: Instrucions per kernel: ");
   for (unsigned k=0; k<config.get_max_concurrent_kernel();k++) {
-    if (gpu_sim_insn_per_kernel[k] > 0)
+    if (gpu_sim_insn_per_kernel[k] > 0)ls
 	    printf("%d->%lld\t", k, gpu_tot_sim_insn_per_kernel[k] + gpu_sim_insn_per_kernel[k]);
   }
  printf("\n");
@@ -1255,8 +1314,8 @@ void gpgpu_sim::print_only_ipc_stats(kernel_info_t *kernel)
 		(double)(gpu_tot_sim_cycle + gpu_sim_cycle));
   }
  printf("\n");
- fflush(stdout);
- assert(0);
+ */
+ exit(0);
 }
 
 void gpgpu_sim::gpu_print_stat() {

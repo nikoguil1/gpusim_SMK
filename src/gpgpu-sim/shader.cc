@@ -2559,7 +2559,7 @@ void shader_core_ctx::register_cta_thread_exit(unsigned cta_num,
     // Jin: for concurrent kernels on sm
     release_shader_resource_1block(cta_num, *kernel);
     kernel->dec_running();
-    printf("Decrementando %d %d\n", kernel->get_uid(), kernel->get_num_cta_running());
+    //printf("Decrementando %d %d\n", kernel->get_uid(), kernel->get_num_cta_running());
     if (!m_gpu->kernel_more_cta_left(kernel)) {
       if (!kernel->running()) {
         SHADER_DPRINTF(LIVENESS,
@@ -4067,7 +4067,7 @@ unsigned simt_core_cluster::issue_block2core_SMK() {
             kernel->is_scheduled = true;
 				  	m_core[core]->issue_block2core(*kernel);
 				  	inc_cont_CTAs(kernel->get_uid());
-				  	printf("KerneliId=%2d cluster=%2d core=%2d num_ctas=%d, active_ctas=%d \n", kernel->get_uid(), m_cluster_id, core, cont_CTAs[kernel->get_uid()-1], kernel->get_num_cta_running());
+				  	//printf("KerneliId=%2d cluster=%2d core=%2d num_ctas=%d, active_ctas=%d \n", kernel->get_uid(), m_cluster_id, core, cont_CTAs[kernel->get_uid()-1], kernel->get_num_cta_running());
 			  		num_blocks_issued++;
 			  		m_cta_issue_next_core = core;
 			  		k = m_gpu->get_num_running_kernels();
