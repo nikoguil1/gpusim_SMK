@@ -536,6 +536,9 @@ class gpgpu_sim : public gpgpu_t {
   //Nico: get number of running kernels
   unsigned get_num_running_kernels() {return m_running_kernels.size();}
 
+  //Nico: function called each time a new kernel is launched to estabish max ctas per core 
+  void smk_max_cta_per_core();
+
   unsigned threads_per_core() const;
   bool get_more_cta_left() const;
   bool kernel_more_cta_left(kernel_info_t *kernel) const;

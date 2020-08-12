@@ -1264,17 +1264,19 @@ void gpgpu_sim::print_only_ipc_stats(kernel_info_t *kernel)
   //fprintf(fp, "k1_name, k1_max_ctas, k1_launched_ctas, k2_name, k2_max_ctas, k2_launched_ctas, kernel_complete_name, num_cycles, k1_inst1, k2_inst2, k1_ipc, k2_ipc\n");
 
   if (kernel->get_uid() == 1){ // If first launched kernel has finished
-    fprintf(fp, "%s,%d,%d,", kernel->name().c_str(), kernel->get_max_ctas(), kernel->get_next_cta_id_single()); // Print info of first launced kernek
+    fprintf(fp, "%s,%d,%d,", kernel->name().c_str(), kernel->max_ctas_per_core[0]+kernel->max_ctas_per_core[1], kernel->get_next_cta_id_single()); // Print info of first launced kernek
     if (m_running_kernels[1] != NULL) // Thid id the kernel with uid=2 
-      fprintf(fp, "%s,%d,%d,", m_running_kernels[1]->name().c_str(), m_running_kernels[1]->get_max_ctas(), m_running_kernels[1]->get_next_cta_id_single()); // Print info of second launched kernel
+      fprintf(fp, "%s,%d,%d,", m_running_kernels[1]->name().c_str(), m_running_kernels[1]->max_ctas_per_core[0]+ m_running_kernels[1]->max_ctas_per_core[1], 
+              m_running_kernels[1]->get_next_cta_id_single()); // Print info of second launched kernel
     else
       fprintf(fp, "None,0,0,");
   } else {
     if (m_running_kernels[0] != NULL) // First kernel has been launched? 
-      fprintf(fp,"%s,%d,%d,", m_running_kernels[0]->name().c_str(), m_running_kernels[0]->get_max_ctas(), m_running_kernels[0]->get_next_cta_id_single());
+      fprintf(fp,"%s,%d,%d,", m_running_kernels[0]->name().c_str(), m_running_kernels[0]->max_ctas_per_core[0]+ m_running_kernels[0]->max_ctas_per_core[1], 
+              m_running_kernels[0]->get_next_cta_id_single());
     else
       fprintf(fp, "None,0,0,");
-    fprintf(fp, "%s,%d,%d,", kernel->name().c_str(), kernel->get_max_ctas(), kernel->get_next_cta_id_single()); // Second launched kernel has finished. Print info.
+    fprintf(fp, "%s,%d,%d,", kernel->name().c_str(), kernel->max_ctas_per_core[0]+kernel->max_ctas_per_core[1], kernel->get_next_cta_id_single()); // Second launched kernel has finished. Print info.
   }
 
   fprintf(fp, "%s,%lld,",  kernel->name().c_str(), gpu_tot_sim_cycle + gpu_sim_cycle);
@@ -1814,8 +1816,104 @@ int gpgpu_sim::next_clock_domain(void) {
   }
   return mask;
 } 
+
+//Nico: function to set max cta per core when smk is on
+void gpgpu_sim::smk_max_cta_per_core() {
+
+  kernel_info_t *kernel1 = NULL, *kernel2 = NULL;
+
+  //Nico: calculate the number of concurrent kernels
+  unsigned int cont=0;
+  for (unsigned k=0; k<get_num_running_kernels(); k++)
+    if (m_running_kernels[k] != NULL)
+      cont++;
+
+  //Nico: if only a kernel is running, get the maximun number of ctas per core
+  if (cont == 1) {
+    unsigned int k;
+    for (k=0; k<get_num_running_kernels(); k++)
+      if (m_running_kernels[k] != NULL)
+      break;
+    kernel1 = m_running_kernels[k];
+    if (kernel1->status == kernel_info_t::t_Kernel_Status::INIT){ // If it is a new kernel
+      kernel1->max_ctas_per_core =new unsigned int[m_shader_config->n_simt_cores_per_cluster](); // Memory allocation 
+    }
+    unsigned int mcta1 = m_shader_config[0].max_cta(*kernel1);
+    for (unsigned int c=0; c < m_shader_config->n_simt_cores_per_cluster; c++)
+      kernel1->max_ctas_per_core[c] = mcta1;
+    kernel1->status = kernel_info_t::t_Kernel_Status::READY;
+  }
+
+  if (cont == 2) {
+    unsigned int k;
+    for (k=0; k<get_num_running_kernels(); k++)
+      if (m_running_kernels[k] != NULL)
+      break;
+    kernel1 = m_running_kernels[k];
+    for (k=k+1; k<get_num_running_kernels(); k++)
+      if (m_running_kernels[k] != NULL)
+      break;
+    kernel2 = m_running_kernels[k];
+
+    if (kernel1->status == kernel_info_t::t_Kernel_Status::INIT){ // If it is a new kernel
+      kernel1->max_ctas_per_core = new unsigned int[m_shader_config->n_simt_cores_per_cluster](); // Memory allocation 
+    }
+    if (kernel2->status == kernel_info_t::t_Kernel_Status::INIT){ // If it is a new kernel
+      kernel2->max_ctas_per_core = new unsigned int[m_shader_config->n_simt_cores_per_cluster](); // Memory allocation 
+    }
+    
+    // for k1
+    unsigned int k1_ctas = m_config.gpu_smk_mctas_kernel1; // Config file: ctas per cluster 
+    for (unsigned int c=0; c < m_shader_config->n_simt_cores_per_cluster; c++) // Calculate number of ctas per core
+      kernel1->max_ctas_per_core[c] = k1_ctas / m_shader_config->n_simt_cores_per_cluster;
+    for (unsigned int c=0; c < k1_ctas % m_shader_config->n_simt_cores_per_cluster; c++)
+      kernel1->max_ctas_per_core[c]++;
+     kernel1->status =kernel_info_t::t_Kernel_Status::READY;
+    
+    // for k2
+    kernel2->max_ctas_per_core =new unsigned int[m_shader_config->n_simt_cores_per_cluster](); // Memory allocation 
+    m_shader_config[0].smk_max_cta(*kernel1, *kernel2);
+    kernel2->status =kernel_info_t::t_Kernel_Status::READY;
+  }
+
+/*
+  for (unsigned k=0, cont=0; k<get_num_running_kernels(); k++){
+    if (m_running_kernels[k] != NULL && cont <2) {
+      if (cont == 0)
+        kernel1 = m_running_kernels[k];
+      else
+        kernel2 = m_running_kernels[k];
+      cont++;
+    }
+  }
+
+  if (kernel1 != NULL && kernel1->is_scheduled == false) { 
+    kernel1->is_scheduled= true;
+    unsigned int k1_ctas = m_config.gpu_smk_mctas_kernel1; // Config file: ctas per cluster
+    unsigned int mcta1 = m_shader_config[0].max_cta(*kernel1); // max number of ctas per core
+    if (mcta1 *  m_shader_config->n_simt_cores_per_cluster < k1_ctas)
+      assert (mcta1 *  m_shader_config->n_simt_cores_per_cluster >= k1_ctas);
+
+    kernel1->max_ctas_per_core =new unsigned int[m_shader_config->n_simt_cores_per_cluster](); // Memory allocation 
+    for (unsigned int c=0; c < m_shader_config->n_simt_cores_per_cluster; c++) // Calculate number of ctas per core
+      kernel1->max_ctas_per_core[c] = k1_ctas / m_shader_config->n_simt_cores_per_cluster;
+    for (unsigned int c=0; c < k1_ctas % m_shader_config->n_simt_cores_per_cluster; c++)
+      kernel1->max_ctas_per_core[c]++;
+  }
+
+  if (kernel2 != NULL && kernel2->is_scheduled == false) { 
+    kernel2->is_scheduled= true;
+    kernel2->max_ctas_per_core =new unsigned int[m_shader_config->n_simt_cores_per_cluster](); // Memory allocation 
+    m_shader_config[0].smk_max_cta(*kernel1, *kernel2);
+  }*/
+}
  
 void gpgpu_sim::issue_block2core() {
+
+  //Nico: Check if kernel has been launched a set max cta
+
+  smk_max_cta_per_core();
+
   unsigned last_issued = m_last_cluster_issue;
   for (unsigned i = 0; i < m_shader_config->n_simt_clusters; i++) {
     unsigned idx = (i + last_issued + 1) % m_shader_config->n_simt_clusters;

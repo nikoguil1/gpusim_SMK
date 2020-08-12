@@ -738,8 +738,7 @@ kernel_info_t::kernel_info_t(dim3 gridDim, dim3 blockDim,
   m_next_tid = m_next_cta;
   m_num_cores_running = 0;
   //Nico
-  is_evicted = false;
-  is_scheduled = false;
+  status = INIT;
 
   m_uid = (entry->gpgpu_ctx->kernel_info_m_next_uid)++;
   m_param_mem = new memory_space_impl<8192>("param", 64 * 1024);

@@ -188,6 +188,9 @@ class kernel_info_t {
   //      m_num_cores_running=0;
   //      m_param_mem=NULL;
   //   }
+
+  enum t_Kernel_Status {INIT, READY, EVICTED, FINISHED};
+
   kernel_info_t(dim3 gridDim, dim3 blockDim, class function_info *entry);
   kernel_info_t(
       dim3 gridDim, dim3 blockDim, class function_info *entry,
@@ -335,10 +338,11 @@ class kernel_info_t {
   unsigned long long end_cycle;
   unsigned m_launch_latency;
 
-  // Nico: flag to indicate kernel has been evicted (or finished): This way we can detect when it stops to obtain current ipc 
-   bool is_evicted;
-  // Nico: flag to indicated when the kernel jas been reschduled (first cta has been assigned to core after previous eviction (or initial scheduling) 
-   bool is_scheduled;
+  // Nico: kernel status
+  t_Kernel_Status status;
+
+   // Nico: max ctas per core
+   unsigned *max_ctas_per_core;
 
   mutable bool cache_config_set;
 };

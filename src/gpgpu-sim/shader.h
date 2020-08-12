@@ -1433,6 +1433,7 @@ class shader_core_config : public core_config {
     m_valid = true;
   }
   void reg_options(class OptionParser *opp);
+  void smk_max_cta(const kernel_info_t &k1, const kernel_info_t &k2)  const;
   unsigned max_cta(const kernel_info_t &k) const;
   unsigned num_shader() const {
     return n_simt_clusters * n_simt_cores_per_cluster;
@@ -2234,7 +2235,7 @@ class simt_core_cluster {
 							  
   // Nico: methods to update the number of kernel ctas running in a cluster
   // Aparently lower kernel id is 1 in gpgpusim
-  void inc_cont_CTAs(unsigned kernel_id)
+ /* void inc_cont_CTAs(unsigned kernel_id)
   {
 	  cont_CTAs[kernel_id-1]++;
   }
@@ -2242,7 +2243,7 @@ class simt_core_cluster {
   void dec_cont_CTAs(unsigned kernel_id)
   {
 	  cont_CTAs[kernel_id-1]--;
-  }
+  }*/
 
  private:
   unsigned m_cluster_id;
@@ -2255,10 +2256,11 @@ class simt_core_cluster {
   unsigned m_cta_issue_next_core;
   std::list<unsigned> m_core_sim_order;
   std::list<mem_fetch *> m_response_fifo;
-  
+
   // Nico: array to annotate the number of CTAs running per kernel 
   // array positions are indexed with kernel id 
-  unsigned *cont_CTAs; // CTA counter of running CTAs on cluster for two kernels.
+ public:
+  unsigned **cont_CTAs; // CTA counter of running CTAs on cluster for two kernels.
   
 };
 
