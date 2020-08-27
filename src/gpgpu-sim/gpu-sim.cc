@@ -624,8 +624,6 @@ void gpgpu_sim_config::reg_options(option_parser_t opp) {
   //Nico: reading max_ctas_per_cluster
   option_parser_register(opp, "-gpgpu_smk_mctas_kernel1", OPT_INT32, 
                         &gpu_smk_mctas_kernel1, "Max ctas per cluster of kernel1", "0");
-  option_parser_register(opp, "-gpgpu_smk_mctas_kernel2", OPT_INT32, 
-                        &gpu_smk_mctas_kernel2, "Max ctas per cluster of kernel2", "0");
   option_parser_register(opp, "-gpgpu_smk_stats_filename", OPT_CSTR, 
                         &gpu_smk_stats_filename, "Output file with coexecution results", NULL);                  
 
@@ -651,15 +649,15 @@ void gpgpu_sim::launch(kernel_info_t *kinfo) {
 
   
   //Nico: Assign max number of ctas running in a cluster
-  switch (kinfo->get_uid()){
-    case 1: kinfo->set_max_ctas(m_config.gpu_smk_mctas_kernel1);
-            break;
-    case 2: kinfo->set_max_ctas(m_config.gpu_smk_mctas_kernel2);
-            break;
-    default:
-            printf("Too many kernels");
-            exit(-1);
-  }
+ // switch (kinfo->get_uid()){
+  //  case 1: kinfo->set_max_ctas(m_config.gpu_smk_mctas_kernel1);
+   //         break;
+    //case 2: kinfo->set_max_ctas(m_config.gpu_smk_mctas_kernel2);
+     //       break;
+   // default:
+    //        printf("Too many kernels");
+     //       exit(-1);
+  //}
 
   if (cta_size > m_shader_config->n_thread_per_shader) {
     printf(
@@ -678,6 +676,7 @@ void gpgpu_sim::launch(kernel_info_t *kinfo) {
   unsigned n = 0;
   for (n = 0; n < m_running_kernels.size(); n++) {
     if ((NULL == m_running_kernels[n]) || m_running_kernels[n]->done()) {
+      kinfo->status =  kernel_info_t::t_Kernel_Status::INIT;
       m_running_kernels[n] = kinfo;
       break;
     }
@@ -887,6 +886,11 @@ gpgpu_sim::gpgpu_sim(const gpgpu_sim_config &config, gpgpu_context *ctx)
 
   last_liveness_message_time = 0;
 
+  // Nico: cycle and instruction count per kernel
+  gpu_sim_insn_per_kernel = new unsigned long long[config.get_max_concurrent_kernel()];
+  gpu_tot_sim_insn_per_kernel = new unsigned long long[config.get_max_concurrent_kernel()];
+  gpu_sim_start_kernel_cycle = new unsigned long long[config.get_max_concurrent_kernel()];
+
   // Jin: functional simulation for CDP
   m_functional_sim = false;
   m_functional_sim_kernel = NULL;
@@ -998,11 +1002,6 @@ void gpgpu_sim::init() {
   partiton_replys_in_parallel = 0;
   partiton_reqs_in_parallel_util = 0;
   gpu_sim_cycle_parition_util = 0;
-  
-  //Nico: 
-  gpgpu_sim_config const config = get_config();
-  gpu_sim_insn_per_kernel = new unsigned long long[config.get_max_concurrent_kernel()];
-  gpu_tot_sim_insn_per_kernel = new unsigned long long[config.get_max_concurrent_kernel()];
 
   reinit_clock_domains();
   gpgpu_ctx->func_sim->set_param_gpgpu_num_shaders(m_config.num_shader());
@@ -1244,6 +1243,7 @@ void gpgpu_sim::clear_executed_kernel_info() {
   m_executed_kernel_uids.clear();
 }
 
+// kernel contains the information of the finished kernel. It has been alrady removed from m_running_kernels array. Thus, only one kernel should be in m_running_kernels
 void gpgpu_sim::print_only_ipc_stats(kernel_info_t *kernel)
 {
 
@@ -1258,42 +1258,83 @@ void gpgpu_sim::print_only_ipc_stats(kernel_info_t *kernel)
     printf("Error: file %s cannot be opened for writing\n");
     return;
   }
+
+
+  // Localize coexecutiing ready kernel
+  kernel_info_t *co_kernel=NULL;
+  int cont =0;
+  for (int k=0; k<get_num_running_kernels();k++){
+    if (m_running_kernels[k]!=NULL) {
+      if (m_running_kernels[k]->status == kernel_info_t::t_Kernel_Status::READY && cont < 1)
+        co_kernel = m_running_kernels[k];
+      cont++;
+    }
+  }
+
+  if (cont > 1) {
+    fprintf(fp,"Error: More than two kernels are coexecuting\n");
+    fclose(fp);
+    exit(0); 
+  }
   
   // Nico: number of instructions and ipc per kernel
   
   //fprintf(fp, "k1_name, k1_max_ctas, k1_launched_ctas, k2_name, k2_max_ctas, k2_launched_ctas, kernel_complete_name, num_cycles, k1_inst1, k2_inst2, k1_ipc, k2_ipc\n");
+  if (co_kernel == NULL) { // No co-running kernels}
+    fprintf(fp, "%s,%d,%d,", kernel->name().c_str(), kernel->max_ctas_per_core[0]+kernel->max_ctas_per_core[1], kernel->get_next_cta_id_single());  // Single kernel Info
+    fprintf(fp, "None,0,0,"); // No concurrent kernel
+    fprintf(fp, "%s,%lld,",  kernel->name().c_str(), gpu_tot_sim_cycle + gpu_sim_cycle- gpu_sim_start_kernel_cycle[kernel->get_uid()]); // Single kernel total execution cycles
+    fprintf(fp, "%lld,0,", gpu_sim_insn_per_kernel[kernel->get_uid()]); // Single kernel total executed instructions
+    fprintf(fp, "%.2f, 0", (double) (gpu_tot_sim_insn_per_kernel[kernel->get_uid()] + gpu_sim_insn_per_kernel[kernel->get_uid()])/
+		(double)(gpu_tot_sim_cycle + gpu_sim_cycle-gpu_sim_start_kernel_cycle[kernel->get_uid()])); // IPC
+    fprintf(fp, "\n");
+    fclose(fp);
+    return;
+  }
 
-  if (kernel->get_uid() == 1){ // If first launched kernel has finished
-    fprintf(fp, "%s,%d,%d,", kernel->name().c_str(), kernel->max_ctas_per_core[0]+kernel->max_ctas_per_core[1], kernel->get_next_cta_id_single()); // Print info of first launced kernek
-    if (m_running_kernels[1] != NULL) // Thid id the kernel with uid=2 
-      fprintf(fp, "%s,%d,%d,", m_running_kernels[1]->name().c_str(), m_running_kernels[1]->max_ctas_per_core[0]+ m_running_kernels[1]->max_ctas_per_core[1], 
-              m_running_kernels[1]->get_next_cta_id_single()); // Print info of second launched kernel
-    else
-      fprintf(fp, "None,0,0,");
+  if (kernel->get_uid() < co_kernel->get_uid()){ // If first launched kernel has finished
+    fprintf(fp, "%s,%d,%d,", kernel->name().c_str(), kernel->max_ctas_per_core[0]+kernel->max_ctas_per_core[1], kernel->get_next_cta_id_single()); // Print info of first launced kernek 
+    fprintf(fp, "%s,%d,%d,", co_kernel->name().c_str(), co_kernel->max_ctas_per_core[0]+co_kernel->max_ctas_per_core[1], 
+              co_kernel->get_next_cta_id_single()); // Print info of second launched kernel
   } else {
-    if (m_running_kernels[0] != NULL) // First kernel has been launched? 
-      fprintf(fp,"%s,%d,%d,", m_running_kernels[0]->name().c_str(), m_running_kernels[0]->max_ctas_per_core[0]+ m_running_kernels[0]->max_ctas_per_core[1], 
-              m_running_kernels[0]->get_next_cta_id_single());
-    else
-      fprintf(fp, "None,0,0,");
+    fprintf(fp,"%s,%d,%d,", co_kernel->name().c_str(), co_kernel->max_ctas_per_core[0]+ co_kernel->max_ctas_per_core[1], co_kernel->get_next_cta_id_single());
     fprintf(fp, "%s,%d,%d,", kernel->name().c_str(), kernel->max_ctas_per_core[0]+kernel->max_ctas_per_core[1], kernel->get_next_cta_id_single()); // Second launched kernel has finished. Print info.
   }
 
-  fprintf(fp, "%s,%lld,",  kernel->name().c_str(), gpu_tot_sim_cycle + gpu_sim_cycle);
-
-  fprintf(fp, "%lld,%lld,", gpu_tot_sim_insn_per_kernel[1] + gpu_sim_insn_per_kernel[1],  gpu_tot_sim_insn_per_kernel[2] + gpu_sim_insn_per_kernel[2]);
+  fprintf(fp, "%s,%lld,",  kernel->name().c_str(), gpu_tot_sim_cycle + gpu_sim_cycle- gpu_sim_start_kernel_cycle[kernel->get_uid()]); // Name and cycles executed by the finishing kernel 
+  if (kernel->get_uid() < co_kernel->get_uid()){
+    fprintf(fp, "%lld,", gpu_sim_insn_per_kernel[kernel->get_uid()]); // Number of instructions executed by the first kernel
+    fprintf(fp, "%lld,", gpu_sim_insn_per_kernel[co_kernel->get_uid()]); // Number of instructions executed by the second kernel
+    fprintf(fp, "%.2f,", (double) (gpu_sim_insn_per_kernel[kernel->get_uid()])/
+		  (double)(gpu_tot_sim_cycle + gpu_sim_cycle-gpu_sim_start_kernel_cycle[kernel->get_uid()])); // IPC for coexection
+    fprintf(fp, "%.2f,", (double) (gpu_sim_insn_per_kernel[co_kernel->get_uid()])/
+		  (double)(gpu_tot_sim_cycle + gpu_sim_cycle-gpu_sim_start_kernel_cycle[co_kernel->get_uid()])); // IPC for coexection 
+  }
+  else
+  {
+    fprintf(fp, "%lld,", gpu_sim_insn_per_kernel[co_kernel->get_uid()]); 
+    fprintf(fp, "%lld,", gpu_sim_insn_per_kernel[kernel->get_uid()]); 
+    fprintf(fp, "%.2f,", (double) (gpu_sim_insn_per_kernel[co_kernel->get_uid()])/
+		  (double)(gpu_tot_sim_cycle + gpu_sim_cycle-gpu_sim_start_kernel_cycle[co_kernel->get_uid()]));
+    fprintf(fp, "%.2f,", (double) (gpu_sim_insn_per_kernel[kernel->get_uid()])/
+		  (double)(gpu_tot_sim_cycle + gpu_sim_cycle-gpu_sim_start_kernel_cycle[kernel->get_uid()]));
+  }
   
-  for (unsigned k=1; k<3;k++)
-    if (gpu_sim_insn_per_kernel[k] > 0) {
-	    fprintf(fp, "%.2f,", k, (double) (gpu_tot_sim_insn_per_kernel[k] + gpu_sim_insn_per_kernel[k])/
-		(double)(gpu_tot_sim_cycle + gpu_sim_cycle));
+  fprintf(fp, "\n");
+  fclose(fp);
+ // fprintf(fp, "%lld,%lld,", gpu_tot_sim_insn_per_kernel[1] + gpu_sim_insn_per_kernel[1],  gpu_tot_sim_insn_per_kernel[2] + gpu_sim_insn_per_kernel[2]);
+  
+ /* for (unsigned k=0; k<2;k++)
+    if (readyk[k] != NULL) {
+	    fprintf(fp, "%.2f,", k, (double) (gpu_tot_sim_insn_per_kernel[readyk[k]->get_uid()] + gpu_sim_insn_per_kernel[readyk[k]->get_uid()])/
+		(double)(gpu_tot_sim_cycle + gpu_sim_cycle-gpu_sim_start_coexecution_cycle));
     } 
     else
       fprintf(fp, "0.0,");
 
   fprintf(fp, "\n");
   fclose(fp);
-
+*/
 /*
 
   printf("Coexecuting kernels: (%d, %d)->%s ", kernel->get_uid(), kernel->get_max_ctas(), kernel->name().c_str());
@@ -1317,7 +1358,8 @@ void gpgpu_sim::print_only_ipc_stats(kernel_info_t *kernel)
   }
  printf("\n");
  */
- exit(0);
+ if (m_running_kernels[0]!= NULL && m_running_kernels[1]!=NULL) //only if two kernel are coexecuting (early stop to save simulation time)
+  exit(0);
 }
 
 void gpgpu_sim::gpu_print_stat() {
@@ -1554,6 +1596,7 @@ void shader_core_ctx::mem_instruction_stats(const warp_inst_t &inst) {
 bool shader_core_ctx::can_issue_1block(kernel_info_t &kernel) {
   // Jin: concurrent kernels on one SM
   if (m_config->gpgpu_concurrent_kernel_sm) {
+    printf("occupy_threads = %d\n", m_occupied_n_threads);
     if (m_config->max_cta(kernel) < 1) return false;
 
     return occupy_shader_resource_1block(kernel, false);
@@ -1670,9 +1713,9 @@ void shader_core_ctx::release_shader_resource_1block(unsigned hw_ctaid,
 void shader_core_ctx::issue_block2core(kernel_info_t &kernel) {
   if (!m_config->gpgpu_concurrent_kernel_sm)
     set_max_cta(kernel);
-  else
+  else 
     assert(occupy_shader_resource_1block(kernel, true));
-
+  
   kernel.inc_running();
 
   // find a free CTA context
@@ -1837,12 +1880,19 @@ void gpgpu_sim::smk_max_cta_per_core() {
     kernel1 = m_running_kernels[k];
     if (kernel1->status != kernel_info_t::t_Kernel_Status::READY) { // Only if k1 id not running yet
       if (kernel1->status == kernel_info_t::t_Kernel_Status::INIT){ // If it is a new kernel
-        kernel1->max_ctas_per_core =new unsigned int[m_shader_config->n_simt_cores_per_cluster](); // Memory allocation 
+        //kernel1->max_ctas_per_core =new unsigned int[m_shader_config->n_simt_cores_per_cluster](); // Memory allocation 
+        kernel1->max_ctas_per_core[0]=0;
+        kernel1->max_ctas_per_core[1]=0;
+        gpu_sim_start_kernel_cycle [kernel1->get_uid()]= gpu_sim_cycle+gpu_tot_sim_cycle;
       }
       unsigned int mcta1 = m_shader_config[0].max_cta(*kernel1);
       for (unsigned int c=0; c < m_shader_config->n_simt_cores_per_cluster; c++)
         kernel1->max_ctas_per_core[c] = mcta1;
       kernel1->status = kernel_info_t::t_Kernel_Status::READY;
+      /*if (kernel1->get_uid() == 2 ) {
+        kernel1->max_ctas_per_core[0] = 1;
+        kernel1->max_ctas_per_core[1] = 0;
+      }*/
     }
   }
 
@@ -1858,13 +1908,21 @@ void gpgpu_sim::smk_max_cta_per_core() {
     kernel2 = m_running_kernels[k];
 
     if (kernel1->status == kernel_info_t::t_Kernel_Status::INIT){ // If it is a new kernel
-      kernel1->max_ctas_per_core = new unsigned int[m_shader_config->n_simt_cores_per_cluster](); // Memory allocation 
+      //kernel1->max_ctas_per_core = new unsigned int[m_shader_config->n_simt_cores_per_cluster](); // Memory allocation 
+      kernel1->max_ctas_per_core[0]=0;
+      kernel1->max_ctas_per_core[1]=0;
+      gpu_sim_start_kernel_cycle [kernel1->get_uid()]= gpu_sim_cycle+gpu_tot_sim_cycle; // Anotatte start cycle for kernel1 
     }
     if (kernel2->status == kernel_info_t::t_Kernel_Status::INIT){ // If it is a new kernel
-      kernel2->max_ctas_per_core = new unsigned int[m_shader_config->n_simt_cores_per_cluster](); // Memory allocation 
+      //kernel2->max_ctas_per_core = new unsigned int[m_shader_config->n_simt_cores_per_cluster](); // Memory allocation 
+      kernel2->max_ctas_per_core[0]=0;
+      kernel2->max_ctas_per_core[1]=0;
+      gpu_sim_start_kernel_cycle [kernel2->get_uid()]= gpu_sim_cycle+gpu_tot_sim_cycle; // Anotatte co-execution start cycle
+      kernel2->status = kernel_info_t::t_Kernel_Status::RESCHEDULE; // max ctas per coe must be calculated
+      gpu_sim_start_kernel_cycle [kernel2->get_uid()]= gpu_sim_cycle+gpu_tot_sim_cycle; // Anotatte co-execution start cycle
     }
     
-    if (kernel2->status != kernel_info_t::t_Kernel_Status::READY){ // only if k2 is not runing yet
+    if (kernel2->status == kernel_info_t::t_Kernel_Status::RESCHEDULE){ // only if k2 is not runing yet
     // for k1
       unsigned int k1_ctas = m_config.gpu_smk_mctas_kernel1; // Config file: ctas per cluster 
       for (unsigned int c=0; c < m_shader_config->n_simt_cores_per_cluster; c++) // Calculate number of ctas per core
@@ -1874,7 +1932,7 @@ void gpgpu_sim::smk_max_cta_per_core() {
       kernel1->status =kernel_info_t::t_Kernel_Status::READY;
     
     // for k2
-      kernel2->max_ctas_per_core =new unsigned int[m_shader_config->n_simt_cores_per_cluster](); // Memory allocation 
+      //kernel2->max_ctas_per_core =new unsigned int[m_shader_config->n_simt_cores_per_cluster](); // Memory allocation 
       m_shader_config[0].smk_max_cta(*kernel1, *kernel2);
       kernel2->status =kernel_info_t::t_Kernel_Status::READY;
     }

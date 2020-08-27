@@ -189,7 +189,7 @@ class kernel_info_t {
   //      m_param_mem=NULL;
   //   }
 
-  enum t_Kernel_Status {INIT, READY, EVICTED, FINISHED};
+  enum t_Kernel_Status {INIT, RESCHEDULE, READY, EVICTED, FINISHED};
 
   kernel_info_t(dim3 gridDim, dim3 blockDim, class function_info *entry);
   kernel_info_t(
@@ -317,8 +317,8 @@ class kernel_info_t {
   kernel_info_t *get_parent() { return m_parent_kernel; }
   
   // Nico: Methods to set and get the maximum number of CTAs per cluster 
-  unsigned get_max_ctas() {return max_ctas_per_cluster;}
-  void set_max_ctas(unsigned mcta) { max_ctas_per_cluster = mcta;}
+  // unsigned get_max_ctas() {return max_ctas_per_cluster;}
+  //void set_max_ctas(unsigned mcta) { max_ctas_per_cluster = mcta;}
 
  private:
   kernel_info_t *m_parent_kernel;
@@ -329,7 +329,7 @@ class kernel_info_t {
       m_cta_streams;  // streams created in each CTA
 	  
    // Nico: limit the number of CTAs per cluster (SMK_implementation)
-   unsigned max_ctas_per_cluster;
+   //unsigned max_ctas_per_cluster;
 
   // Jin: kernel timing
  public:
@@ -342,7 +342,7 @@ class kernel_info_t {
   t_Kernel_Status status;
 
    // Nico: max ctas per core
-   unsigned *max_ctas_per_core;
+   unsigned max_ctas_per_core[2];
 
   mutable bool cache_config_set;
 };

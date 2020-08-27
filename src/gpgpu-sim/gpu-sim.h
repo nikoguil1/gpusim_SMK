@@ -372,7 +372,6 @@ class gpgpu_sim_config : public power_config,
   }
 
   unsigned get_smk_mctas_kernel1() {return gpu_smk_mctas_kernel1;}
-  unsigned get_smk_mctas_kernel2() {return gpu_smk_mctas_kernel2;}
 
  private:
   void init_clock_domains(void);
@@ -430,7 +429,6 @@ class gpgpu_sim_config : public power_config,
 
   // Nico: max number of ctas per kernel that can be ruuning in a cluster
   unsigned gpu_smk_mctas_kernel1;
-  unsigned gpu_smk_mctas_kernel2;
   char *gpu_smk_stats_filename;
 };
 
@@ -661,6 +659,8 @@ class gpgpu_sim : public gpgpu_t {
   //Nico: counters of executed instructions per kernel
   unsigned long long *gpu_sim_insn_per_kernel;
   unsigned long long *gpu_tot_sim_insn_per_kernel;
+  // Nico: annotate when co-execution start (in case previous execution is sequential) for each kernel
+  unsigned long long *gpu_sim_start_kernel_cycle;
   
   unsigned long long gpu_sim_insn_last_update;
   unsigned gpu_sim_insn_last_update_sid;

@@ -2534,7 +2534,7 @@ void shader_core_ctx::register_cta_thread_exit(unsigned cta_num,
     shader_CTA_count_unlog(m_sid, 1);
 	  //Nico: decrease the number of running CTAs 
     m_cluster->cont_CTAs[kernel->get_uid()-1][m_sid % m_config->n_simt_cores_per_cluster]--; // m_sid % m_config->n_simt_cores_per_cluster idndicated the core id within the cluster
-
+    //printf("Saliendo cta --> KerneliId=%2d cluster=%2d core=%2d num_ctas=%d, max_ctas=%d \n", kernel->get_uid(), m_sid/2, m_sid % 2, m_cluster->cont_CTAs[kernel->get_uid()-1][m_sid % 2], kernel->max_ctas_per_core[m_sid % 2]);
     SHADER_DPRINTF(
         LIVENESS,
         "GPGPU-Sim uArch: Finished CTA #%u (%lld,%lld), %u CTAs running\n",
@@ -3042,8 +3042,8 @@ void shader_core_ctx::display_pipeline(FILE *fout, int print_mem,
 
 // Nico: given kernel k1 using mcta ctas per core, calculate mac number of ctas for kernel 2 
 void shader_core_config::smk_max_cta(const kernel_info_t &k1, const kernel_info_t &k2) const {
-  unsigned int *mcta1_core = k1.max_ctas_per_core;
-  unsigned int *mcta2_core = k2.max_ctas_per_core;
+  unsigned int *mcta1_core = (unsigned int *)k1.max_ctas_per_core;
+  unsigned int *mcta2_core = (unsigned int *)k2.max_ctas_per_core;
 
   unsigned threads_per_cta_k1 = k1.threads_per_cta();
   const class function_info *kernel1 = k1.entry();
@@ -3057,19 +3057,22 @@ void shader_core_config::smk_max_cta(const kernel_info_t &k1, const kernel_info_
   if (padded_cta_size_k2 % warp_size)
     padded_cta_size_k2 = ((padded_cta_size_k2 / warp_size) + 1) * (warp_size);
 
-  unsigned int remaining_shmem_size =  gpgpu_shmem_size; 
+  //unsigned int remaining_shmem_size =  gpgpu_shmem_size; 
   
   const struct gpgpu_ptx_sim_info *kernel_info1 = ptx_sim_kernel_info(kernel1);
   const struct gpgpu_ptx_sim_info *kernel_info2 = ptx_sim_kernel_info(kernel2);
 
   // Remove shared mmemory occupied by k1 in the cluster (adding all cores)
-  for (unsigned int c=0;  c <n_simt_cores_per_cluster; c++)
-      remaining_shmem_size -= (mcta1_core[c] * kernel_info1->smem);
+  //for (unsigned int c=0;  c <n_simt_cores_per_cluster; c++)
+   //   remaining_shmem_size -= (mcta1_core[c] * kernel_info1->smem);
 
-  for (unsigned int c=0; c < n_simt_cores_per_cluster; c++) { // MEjor seria mcta1_shd->sizeo(), peor da error
+  for (unsigned int c=0; c < n_simt_cores_per_cluster; c++) { // MEjor seria mcta1_shd->sizeo(), pero da error
 
     // Remaining n_threads/core after k1 cta allocation
     unsigned int remaining_threads = n_thread_per_shader - padded_cta_size_k1 * mcta1_core[c];
+
+    // Remaining shared memory per core
+    unsigned int remaining_shmem_size = gpgpu_shmem_size - kernel_info1->smem * mcta1_core[c];
 
     // Remaining registers/core after register k1 allocation
     unsigned int remainning_regs = gpgpu_shader_registers - mcta1_core[c] * padded_cta_size_k1 * ((kernel_info1->regs + 3) & ~3);
@@ -3100,7 +3103,7 @@ void shader_core_config::smk_max_cta(const kernel_info_t &k1, const kernel_info_
 
     //Nico: update shared mem remaining resources
     
-    remaining_shmem_size -= result *  kernel_info2->smem;
+    //remaining_shmem_size -= result *  kernel_info2->smem;
     
     printf("GPGPU-Sim uArch: core %d = %u, limited by:", c, result);
     if (result == result_thread) printf(" threads");
@@ -4175,7 +4178,7 @@ unsigned simt_core_cluster::issue_block2core_SMK() {
       if (kernel->get_num_cta_running() == 0 && kernel->status == READY){
         kernel->is_evicted = true;
         kernel->is_scheduled = false;
-      }
+      }(CTA/)
      
       if (kernel->is_evicted == false && kernel->done() == true){ //Realmente done() mira que no este ejecutandose en core y además no le queden ctas
         kernel->is_evicted= true;
@@ -4194,20 +4197,31 @@ unsigned simt_core_cluster::issue_block2core_SMK() {
 		  //printf("cluster=%d Kernel=%d cont_CTAs=%d max_CTAS=%d\n", m_cluster_id, kernel->get_uid(), cont_CTAs[kernel->get_uid()-1], kernel->get_max_ctas());
 		  assert(kernel->get_uid() <= gpu_config.get_max_concurrent_kernel() && kernel->get_uid() > 0); // Nico: Max allowed kernel id m_config->get_max_concurrent_kernel() see simt_core_cluster::simt_core_cluster
 		
+      /*if (kernel->max_ctas_per_core[0]>16 || kernel->max_ctas_per_core[1]>16)
+        printf("Aqui\n");*/
 		  // if (cont_CTAs[kernel->get_uid()-1][] < kernel->get_max_ctas()) { 
 		
 		    for (unsigned i = 0; i <= m_config->n_simt_cores_per_cluster; i++) {
 				  unsigned core = (i + m_cta_issue_next_core + 1) % m_config->n_simt_cores_per_cluster;	
           //if (!m_core[core]->can_issue_1block(*kernel))
 				   // assert(m_core[core]->can_issue_1block(*kernel)); // Nico, estar seguro quese ha calculado bien el numero de ctas per cluster
+
 				  if (m_gpu->kernel_more_cta_left(kernel) && cont_CTAs[kernel->get_uid()-1][core] < kernel->max_ctas_per_core[core] /*&&   m_core[core]->can_issue_1block(*kernel)*/) {
-				  	m_core[core]->issue_block2core(*kernel);
-				  	cont_CTAs[kernel->get_uid()-1][core]++;
-				  	printf("KerneliId=%2d cluster=%2d core=%2d num_ctas=%d, active_ctas=%d \n", kernel->get_uid(), m_cluster_id, core, cont_CTAs[kernel->get_uid()-1][core], kernel->get_num_cta_running());
-			  		num_blocks_issued++;
-			  		m_cta_issue_next_core = core;
-			  		k = m_gpu->get_num_running_kernels();
-			  		break;
+            if (m_core[core]->can_issue_1block(*kernel) == true) {  // In some situations (when num ctas per kernels changes) ocuppied resources can be prevent launching new ctas. It should be a temporary situation.  
+              //printf("KerneliId=%2d cluster=%2d core=%2d num_ctas=%d, max_ctas=%d \n", kernel->get_uid(), m_cluster_id, core, cont_CTAs[kernel->get_uid()-1][core], kernel->max_ctas_per_core[core]);
+              m_core[core]->issue_block2core(*kernel);
+              cont_CTAs[kernel->get_uid()-1][core]++;
+			  		  num_blocks_issued++;
+			  		  m_cta_issue_next_core = core;
+			  		  k = m_gpu->get_num_running_kernels();
+			  		  break;
+            }
+            /*else
+            {
+              printf(" ** Warning: No available resources ** in cluster=%d core=%d, kernel_id=%d, ctas=%d, max_ctas=%d\n", 
+              m_cluster_id, core, kernel->get_uid(), cont_CTAs[kernel->get_uid()-1][core], kernel->max_ctas_per_core[core]);
+            }*/
+            
 			  	}
 		  	}
 	  	}
