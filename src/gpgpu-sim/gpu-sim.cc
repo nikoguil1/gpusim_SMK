@@ -1596,7 +1596,7 @@ void shader_core_ctx::mem_instruction_stats(const warp_inst_t &inst) {
 bool shader_core_ctx::can_issue_1block(kernel_info_t &kernel) {
   // Jin: concurrent kernels on one SM
   if (m_config->gpgpu_concurrent_kernel_sm) {
-    printf("occupy_threads = %d\n", m_occupied_n_threads);
+    //printf("occupy_threads = %d\n", m_occupied_n_threads);
     if (m_config->max_cta(kernel) < 1) return false;
 
     return occupy_shader_resource_1block(kernel, false);
