@@ -55,7 +55,7 @@
 mem_fetch *shader_core_mem_fetch_allocator::alloc(
     new_addr_type addr, mem_access_type type, unsigned size, bool wr,
     unsigned long long cycle) const {
-  mem_access_t access(type, addr, size, wr, m_memory_config->gpgpu_ctx);
+  mem_access_t access(0, type, addr, size, wr, m_memory_config->gpgpu_ctx); 
   mem_fetch *mf =
       new mem_fetch(access, NULL, wr ? WRITE_PACKET_SIZE : READ_PACKET_SIZE, -1,
                     m_core_id, m_cluster_id, m_memory_config, cycle);
@@ -869,6 +869,8 @@ void shader_core_ctx::fetch() {
           address_type ppc = pc + PROGRAM_MEM_START;
 		  //Nico
 		  kernel_id = m_warp[warp_id].get_kernel_id();
+      if (kernel_id != 1 && kernel_id != 2)
+        printf("Para1\n");
           unsigned nbytes = 16;
           unsigned offset_in_block =
               pc & (m_config->m_L1I_config.get_line_sz() - 1);
@@ -877,7 +879,7 @@ void shader_core_ctx::fetch() {
 
           // TODO: replace with use of allocator
           // mem_fetch *mf = m_mem_fetch_allocator->alloc()
-          mem_access_t acc(INST_ACC_R, ppc, nbytes, false, m_gpu->gpgpu_ctx);
+          mem_access_t acc(kernel_id, INST_ACC_R, ppc, nbytes, false, m_gpu->gpgpu_ctx); // Nico: 
           mem_fetch *mf = new mem_fetch(
               acc, NULL /*we don't have an instruction yet*/, READ_PACKET_SIZE,
               warp_id, m_sid, m_tpc, m_memory_config,
@@ -2532,6 +2534,9 @@ void shader_core_ctx::register_cta_thread_exit(unsigned cta_num,
     m_n_active_cta--;
     m_barriers.deallocate_barrier(cta_num);
     shader_CTA_count_unlog(m_sid, 1);
+
+    //Nico
+    //printf("CTA_EX: Execution cycles of kernel %d cta =%lld\n", kernel->get_uid(), m_gpu->gpu_sim_cycle - cta_start_cycle[cta_num]); 
 	  //Nico: decrease the number of running CTAs 
     m_cluster->cont_CTAs[kernel->get_uid()-1][m_sid % m_config->n_simt_cores_per_cluster]--; // m_sid % m_config->n_simt_cores_per_cluster idndicated the core id within the cluster
     //printf("Saliendo cta --> KerneliId=%2d cluster=%2d core=%2d num_ctas=%d, max_ctas=%d \n", kernel->get_uid(), m_sid/2, m_sid % 2, m_cluster->cont_CTAs[kernel->get_uid()-1][m_sid % 2], kernel->max_ctas_per_core[m_sid % 2]);
@@ -4196,36 +4201,43 @@ unsigned simt_core_cluster::issue_block2core_SMK() {
 		
 		  //printf("cluster=%d Kernel=%d cont_CTAs=%d max_CTAS=%d\n", m_cluster_id, kernel->get_uid(), cont_CTAs[kernel->get_uid()-1], kernel->get_max_ctas());
 		  assert(kernel->get_uid() <= gpu_config.get_max_concurrent_kernel() && kernel->get_uid() > 0); // Nico: Max allowed kernel id m_config->get_max_concurrent_kernel() see simt_core_cluster::simt_core_cluster
-		
+
       /*if (kernel->max_ctas_per_core[0]>16 || kernel->max_ctas_per_core[1]>16)
         printf("Aqui\n");*/
 		  // if (cont_CTAs[kernel->get_uid()-1][] < kernel->get_max_ctas()) { 
+
+      for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; i++) { // Identify period where cta configuration is changing
+        if (cont_CTAs[kernel->get_uid()-1][i] > kernel->max_ctas_per_core[i]) {
+           kernel->num_excedded_ctas++; // number of cores with excedded ctas of a kernel
+           break;
+         }
+      }
 		
-		    for (unsigned i = 0; i <= m_config->n_simt_cores_per_cluster; i++) {
-				  unsigned core = (i + m_cta_issue_next_core + 1) % m_config->n_simt_cores_per_cluster;	
+		  for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; i++) {
+			  unsigned core = (i + m_cta_issue_next_core + 1) % m_config->n_simt_cores_per_cluster;	
           //if (!m_core[core]->can_issue_1block(*kernel))
 				   // assert(m_core[core]->can_issue_1block(*kernel)); // Nico, estar seguro quese ha calculado bien el numero de ctas per cluster
 
-				  if (m_gpu->kernel_more_cta_left(kernel) && cont_CTAs[kernel->get_uid()-1][core] < kernel->max_ctas_per_core[core] /*&&   m_core[core]->can_issue_1block(*kernel)*/) {
-            if (m_core[core]->can_issue_1block(*kernel) == true) {  // In some situations (when num ctas per kernels changes) ocuppied resources can be prevent launching new ctas. It should be a temporary situation.  
-              //printf("KerneliId=%2d cluster=%2d core=%2d num_ctas=%d, max_ctas=%d \n", kernel->get_uid(), m_cluster_id, core, cont_CTAs[kernel->get_uid()-1][core], kernel->max_ctas_per_core[core]);
-              m_core[core]->issue_block2core(*kernel);
-              cont_CTAs[kernel->get_uid()-1][core]++;
+				 if (m_gpu->kernel_more_cta_left(kernel) && cont_CTAs[kernel->get_uid()-1][core] < kernel->max_ctas_per_core[core] /*&&   m_core[core]->can_issue_1block(*kernel)*/) {
+          if (m_core[core]->can_issue_1block(*kernel) == true) {  // In some situations (when num ctas per kernels changes) ocuppied resources can be prevent launching new ctas. It should be a temporary situation.  
+            //printf("KerneliId=%2d cluster=%2d core=%2d num_ctas=%d, max_ctas=%d \n", kernel->get_uid(), m_cluster_id, core, cont_CTAs[kernel->get_uid()-1][core], kernel->max_ctas_per_core[core]);
+            m_core[core]->issue_block2core(*kernel);
+            cont_CTAs[kernel->get_uid()-1][core]++;
 			  		  num_blocks_issued++;
 			  		  m_cta_issue_next_core = core;
 			  		  k = m_gpu->get_num_running_kernels();
 			  		  break;
-            }
+          }
             /*else
             {
               printf(" ** Warning: No available resources ** in cluster=%d core=%d, kernel_id=%d, ctas=%d, max_ctas=%d\n", 
               m_cluster_id, core, kernel->get_uid(), cont_CTAs[kernel->get_uid()-1][core], kernel->max_ctas_per_core[core]);
             }*/
             
-			  	}
-		  	}
-	  	}
-  	}
+			  }
+		  }
+	  }
+  }
   //}
   return num_blocks_issued;
 }  

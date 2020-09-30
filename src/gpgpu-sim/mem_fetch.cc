@@ -65,6 +65,13 @@ mem_fetch::mem_fetch(const mem_access_t &access, const warp_inst_t *inst,
   icnt_flit_size = config->icnt_flit_size;
   original_mf = m_original_mf;
   original_wr_mf = m_original_wr_mf;
+  mem_access_t acc = access; 
+  if (inst != NULL)
+    inst->m_kernel_id;;
+    
+  /*unsigned int kernel_id = inst->m_kernel_id;
+  if (kernel_id != 1 && kernel_id !=2)
+    printf("Para\n");*/
 }
 
 mem_fetch::~mem_fetch() { m_status = MEM_FETCH_DELETED; }

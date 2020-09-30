@@ -181,6 +181,17 @@ memory_stats_t::memory_stats_t(unsigned n_shader,
       (unsigned int *)calloc(mem_config->m_n_mem, sizeof(unsigned int));
   L2_L2todramlength =
       (unsigned int *)calloc(mem_config->m_n_mem, sizeof(unsigned int));
+
+  // Nico: create buffer to annote row buffer acceses and hits per kernel: first dimension->kernel_ids, second dimension ram module id 
+  row_buffer_access = (unsigned long long **)calloc(10, sizeof(unsigned long long *)); //Ojo, debe ser: gpu->get_num_running_kernels()
+  for (int i=0;i<10;i++) 
+    row_buffer_access[i] = (unsigned long long *)calloc(mem_config->m_n_mem, sizeof(unsigned long long));
+
+  row_buffer_hits = (unsigned long long **)calloc(10, sizeof(unsigned long long *)); //Ojo, debe ser: gpu->get_num_running_kernels()
+  for (int i=0;i<10;i++) 
+    row_buffer_hits[i] = (unsigned long long *)calloc(mem_config->m_n_mem, sizeof(unsigned long long));
+
+  total_kernel_accesses = (unsigned long long *)calloc(10, sizeof(unsigned long long *)); //Ojo, debe ser: gpu->get_num_running_kernels()
 }
 
 // record the total latency

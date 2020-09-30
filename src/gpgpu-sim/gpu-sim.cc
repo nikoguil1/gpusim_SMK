@@ -890,6 +890,8 @@ gpgpu_sim::gpgpu_sim(const gpgpu_sim_config &config, gpgpu_context *ctx)
   gpu_sim_insn_per_kernel = new unsigned long long[config.get_max_concurrent_kernel()];
   gpu_tot_sim_insn_per_kernel = new unsigned long long[config.get_max_concurrent_kernel()];
   gpu_sim_start_kernel_cycle = new unsigned long long[config.get_max_concurrent_kernel()];
+  gpu_sim_start_kernel_inst = new unsigned long long[config.get_max_concurrent_kernel()];
+
 
   // Jin: functional simulation for CDP
   m_functional_sim = false;
@@ -1259,7 +1261,6 @@ void gpgpu_sim::print_only_ipc_stats(kernel_info_t *kernel)
     return;
   }
 
-
   // Localize coexecutiing ready kernel
   kernel_info_t *co_kernel=NULL;
   int cont =0;
@@ -1322,44 +1323,14 @@ void gpgpu_sim::print_only_ipc_stats(kernel_info_t *kernel)
   
   fprintf(fp, "\n");
   fclose(fp);
- // fprintf(fp, "%lld,%lld,", gpu_tot_sim_insn_per_kernel[1] + gpu_sim_insn_per_kernel[1],  gpu_tot_sim_insn_per_kernel[2] + gpu_sim_insn_per_kernel[2]);
-  
- /* for (unsigned k=0; k<2;k++)
-    if (readyk[k] != NULL) {
-	    fprintf(fp, "%.2f,", k, (double) (gpu_tot_sim_insn_per_kernel[readyk[k]->get_uid()] + gpu_sim_insn_per_kernel[readyk[k]->get_uid()])/
-		(double)(gpu_tot_sim_cycle + gpu_sim_cycle-gpu_sim_start_coexecution_cycle));
-    } 
-    else
-      fprintf(fp, "0.0,");
 
-  fprintf(fp, "\n");
-  fclose(fp);
-*/
-/*
-
-  printf("Coexecuting kernels: (%d, %d)->%s ", kernel->get_uid(), kernel->get_max_ctas(), kernel->name().c_str());
-  for (unsigned k=0; k < m_running_kernels.size(); k++)
+ //Nico: if only a kernels is available stop (no concurrency is possible)
+  unsigned cont_pending_kernels = 0;
+  for (unsigned k=0; k < get_num_running_kernels(); k++) 
     if (m_running_kernels[k] != NULL)
-      printf("/t (%d, %d)->%s", m_running_kernels[k]->get_uid(), m_running_kernels[k]->get_max_ctas(), m_running_kernels[k]->name().c_str());
-  printf("\n");
-  printf("First Kernel finished: id=%d, name=%s\n", kernel->get_uid(), kernel->name().c_str());
-  printf("IPC: gpu_tot_sim_cycle = %lld\n", gpu_tot_sim_cycle + gpu_sim_cycle);
-  printf("IPC: Instrucions per kernel: ");
-  for (unsigned k=0; k<config.get_max_concurrent_kernel();k++) {
-    if (gpu_sim_insn_per_kernel[k] > 0)ls
-	    printf("%d->%lld\t", k, gpu_tot_sim_insn_per_kernel[k] + gpu_sim_insn_per_kernel[k]);
-  }
- printf("\n");
- printf("IPC: ipc per kernel: ");
-  for (unsigned k=0; k<config.get_max_concurrent_kernel();k++){
-    if (gpu_sim_insn_per_kernel[k] > 0)
-	    printf("%d->%12.4f\t", k, (double) (gpu_tot_sim_insn_per_kernel[k] + gpu_sim_insn_per_kernel[k])/
-		(double)(gpu_tot_sim_cycle + gpu_sim_cycle));
-  }
- printf("\n");
- */
- if (m_running_kernels[0]!= NULL && m_running_kernels[1]!=NULL) //only if two kernel are coexecuting (early stop to save simulation time)
-  exit(0);
+       cont_pending_kernels++;
+  if (cont_pending_kernels <= 1) 
+        exit(0);
 }
 
 void gpgpu_sim::gpu_print_stat() {
@@ -1800,7 +1771,8 @@ void shader_core_ctx::issue_block2core(kernel_info_t &kernel) {
              m_config->n_thread_per_shader);  // should be at least one, but
                                               // less than max
   m_cta_status[free_cta_hw_id] = nthreads_in_block;
-
+  //Nico: annotate start execution cycle of cta
+  cta_start_cycle[free_cta_hw_id] = m_gpu->gpu_sim_cycle;
   if (m_gpu->resume_option == 1 && kernel.get_uid() == m_gpu->resume_kernel &&
       ctaid >= m_gpu->resume_CTA && ctaid < m_gpu->checkpoint_CTA_t) {
     char f1name[2048];
@@ -1883,6 +1855,7 @@ void gpgpu_sim::smk_max_cta_per_core() {
         //kernel1->max_ctas_per_core =new unsigned int[m_shader_config->n_simt_cores_per_cluster](); // Memory allocation 
         kernel1->max_ctas_per_core[0]=0;
         kernel1->max_ctas_per_core[1]=0;
+        kernel1->save_ipc = 0.0;
         gpu_sim_start_kernel_cycle [kernel1->get_uid()]= gpu_sim_cycle+gpu_tot_sim_cycle;
       }
       unsigned int mcta1 = m_shader_config[0].max_cta(*kernel1);
@@ -1907,34 +1880,147 @@ void gpgpu_sim::smk_max_cta_per_core() {
       break;
     kernel2 = m_running_kernels[k];
 
+    // Nico: updating ctas per core asignement for kernel 1 and 2 
+    if ((gpu_tot_sim_cycle + gpu_sim_cycle) -  last_sampl_cycle == perf_sampl_interval) {
+      
+      last_sampl_cycle = gpu_tot_sim_cycle + gpu_sim_cycle;
+
+      if(kernel1->num_excedded_ctas != 0 || kernel2->num_excedded_ctas != 0) {
+          perf_sampl_active = false; 
+          printf("**Conf %d %d\n", kernel1->num_excedded_ctas, kernel2->num_excedded_ctas);
+      }
+      else
+      {
+         perf_sampl_active = true;
+      }
+      
+
+      if (perf_sampl_active == true) {
+
+        perf_sampl_interval = 5000;
+        save_configuration_performance(&curr_conf_perf, kernel1, kernel2);
+      
+        if (prev_sampl_perf.ipc1 !=0 && prev_sampl_perf.ipc2 !=0) {
+
+          double ws;
+          if (prev_conf_perf.ipc1 != 0) // A previous configuration has been measusred
+            ws = ((curr_conf_perf.ipc1/prev_conf_perf.ipc1) +  (curr_conf_perf.ipc2/prev_conf_perf.ipc2))/2.0;
+          else
+            ws = 0;
+
+          // Accumulate RB accesses and hits
+          unsigned long long rb_total_accesses1 = 0, rb_total_accesses2 = 0;
+          unsigned long long rb_total_hits1 = 0, rb_total_hits2=0;
+          for (int chip=0; chip < m_memory_config->m_n_mem; chip++) {
+            rb_total_hits1 += m_memory_stats->row_buffer_hits[kernel1->get_uid()][chip];
+            rb_total_accesses1 += m_memory_stats->row_buffer_access[kernel1->get_uid()][chip];
+            rb_total_hits2 += m_memory_stats->row_buffer_hits[kernel2->get_uid()][chip];
+            rb_total_accesses2 += m_memory_stats->row_buffer_access[kernel2->get_uid()][chip];
+          }
+
+          // Imax calculatio: maximum number of instructionsper cycle
+          unsigned int ilp = 2; 
+          unsigned int warpsize = m_config.m_shader_config.warp_size;
+          double Imax =  ilp * warpsize * m_config.num_cluster() * m_config.m_shader_config.n_simt_cores_per_cluster;
+          
+          // Bmax according HSM paper (in GB/s)
+          unsigned int request_size = 4; // In bytes
+          unsigned long long total_accesses1 = m_memory_stats->total_kernel_accesses[kernel1->get_uid()];
+          unsigned long long total_accesses2 = m_memory_stats->total_kernel_accesses[kernel2->get_uid()];
+          unsigned int sample_cycles = gpu_tot_sim_cycle + gpu_sim_cycle-gpu_sim_start_kernel_cycle[kernel1->get_uid()];
+          double Bmax1 = ((double)Imax / curr_conf_perf.ipc1) * ((double)total_accesses1/(double)sample_cycles)  * (double)(request_size) * 1.417;
+          double Bmax2 = ((double)Imax / curr_conf_perf.ipc2) * ((double)total_accesses2/(double)sample_cycles)  * (double)(request_size) * 1.417;
+          
+          printf("**Conf, %.2f, %d, %d, %lld, %.2f, %.2f, %.2f, %.2f, %lld, %lld, %d, %d, %lld, %lld, %f, %f, %f, %f\n", ws, curr_conf_perf.num_ctas1, curr_conf_perf.num_ctas2, gpu_tot_sim_cycle + gpu_sim_cycle, 
+                curr_conf_perf.ipc1, curr_conf_perf.ipc2, prev_conf_perf.ipc1, prev_conf_perf.ipc2,  
+                curr_conf_perf.ins1, curr_conf_perf.ins2, kernel1->num_excedded_ctas, kernel2->num_excedded_ctas, 
+                rb_total_accesses1, rb_total_accesses2, 
+                (double)rb_total_hits1/(double)rb_total_accesses1, (double)rb_total_hits2/(double)rb_total_accesses2, Bmax1, Bmax2);  
+
+          /*if (fabs((curr_conf_perf.ipc1 - prev_sampl_perf.ipc1) / prev_sampl_perf.ipc1) < .05 &&
+            fabs((curr_conf_perf.ipc2 - prev_sampl_perf.ipc2) / prev_sampl_perf.ipc2) <.05){*/
+          if ((gpu_tot_sim_cycle + gpu_sim_cycle) >= 35000 * (kernel1->max_ctas_per_core[0]+kernel1->max_ctas_per_core[1]) ){
+            if (kernel1->max_ctas_per_core[0] + kernel1->max_ctas_per_core[1] < 7) {
+              perf_sampl_active = false; // When configuration is changed smpling rate is changed
+              perf_sampl_interval = 5000;
+              if (kernel1->max_ctas_per_core[0] == kernel1->max_ctas_per_core[1])
+                kernel1->max_ctas_per_core[0]++;
+              else
+               kernel1->max_ctas_per_core[1]++;
+              kernel2->status = kernel_info_t::t_Kernel_Status::RESCHEDULE; 
+              prev_conf_perf.ipc1 = (double)(curr_conf_perf.ins1-prev_sampl_perf.ins1) / (double)perf_sampl_interval;
+              prev_conf_perf.ipc2 = (double)(curr_conf_perf.ins2-prev_sampl_perf.ins2) / (double)perf_sampl_interval;
+              //memcpy (&prev_conf_perf, &curr_conf_perf, sizeof(t_perf_conf));
+            }
+          }
+        }  
+        memcpy (&prev_sampl_perf, &curr_conf_perf, sizeof(t_perf_conf));
+        //kernel2->status = kernel_info_t::t_Kernel_Status::RESCHEDULE; // Recalculate ctas per core for kernel 2
+      }
+      else{
+        perf_sampl_interval = 5000;
+        perf_sampl_active = true;
+        kernel2->status = kernel_info_t::t_Kernel_Status::RESCHEDULE; // Recalculate ctas per core for kernel 2
+      }
+    }
+
     if (kernel1->status == kernel_info_t::t_Kernel_Status::INIT){ // If it is a new kernel
       //kernel1->max_ctas_per_core = new unsigned int[m_shader_config->n_simt_cores_per_cluster](); // Memory allocation 
       kernel1->max_ctas_per_core[0]=0;
       kernel1->max_ctas_per_core[1]=0;
-      gpu_sim_start_kernel_cycle [kernel1->get_uid()]= gpu_sim_cycle+gpu_tot_sim_cycle; // Anotatte start cycle for kernel1 
+      kernel1->save_ipc = 0.0;
     }
     if (kernel2->status == kernel_info_t::t_Kernel_Status::INIT){ // If it is a new kernel
       //kernel2->max_ctas_per_core = new unsigned int[m_shader_config->n_simt_cores_per_cluster](); // Memory allocation 
       kernel2->max_ctas_per_core[0]=0;
       kernel2->max_ctas_per_core[1]=0;
-      gpu_sim_start_kernel_cycle [kernel2->get_uid()]= gpu_sim_cycle+gpu_tot_sim_cycle; // Anotatte co-execution start cycle
+      kernel2->save_ipc = 0.0;
       kernel2->status = kernel_info_t::t_Kernel_Status::RESCHEDULE; // max ctas per coe must be calculated
-      gpu_sim_start_kernel_cycle [kernel2->get_uid()]= gpu_sim_cycle+gpu_tot_sim_cycle; // Anotatte co-execution start cycle
+
+      // Establish initial cta per core for kernel 1 just when kernel 2 is prepared to run
+      kernel1->max_ctas_per_core[0]=1;
+      kernel1->max_ctas_per_core[1]=0;
+      
+      // Initialize performance info
+      memset(&prev_conf_perf, 0, sizeof(t_perf_conf));
+      memset(&curr_conf_perf, 0, sizeof(t_perf_conf));
+      memset(&prev_sampl_perf, 0, sizeof(t_perf_conf));
+
+      // Initialize dram memory counters
+      memset(m_memory_stats->row_buffer_access[kernel1->get_uid()], 0,  m_memory_config->m_n_mem*sizeof(unsigned long long));
+      memset(m_memory_stats->row_buffer_hits[kernel1->get_uid()], 0,  m_memory_config->m_n_mem*sizeof(unsigned long long));
+      memset(m_memory_stats->row_buffer_access[kernel2->get_uid()], 0,  m_memory_config->m_n_mem*sizeof(unsigned long long));
+      memset(m_memory_stats->row_buffer_hits[kernel2->get_uid()], 0,  m_memory_config->m_n_mem*sizeof(unsigned long long));
+
+      // performance sample
+      perf_sampl_active = false; // Poner a false
+      perf_sampl_interval = 2000; // Poner a 4000
     }
     
     if (kernel2->status == kernel_info_t::t_Kernel_Status::RESCHEDULE){ // only if k2 is not runing yet
-    // for k1
-      unsigned int k1_ctas = m_config.gpu_smk_mctas_kernel1; // Config file: ctas per cluster 
+      // for k1
+      /*unsigned int k1_ctas = m_config.gpu_smk_mctas_kernel1; // Config file: ctas per cluster 
       for (unsigned int c=0; c < m_shader_config->n_simt_cores_per_cluster; c++) // Calculate number of ctas per core
         kernel1->max_ctas_per_core[c] = k1_ctas / m_shader_config->n_simt_cores_per_cluster;
       for (unsigned int c=0; c < k1_ctas % m_shader_config->n_simt_cores_per_cluster; c++)
-        kernel1->max_ctas_per_core[c]++;
+        kernel1->max_ctas_per_core[c]++;*/
+      gpu_sim_start_kernel_cycle [kernel1->get_uid()] = gpu_sim_cycle+gpu_tot_sim_cycle; // Anotatte co-execution start cycle
+      gpu_sim_start_kernel_cycle [kernel2->get_uid()] = gpu_sim_cycle+gpu_tot_sim_cycle; // Anotatte co-execution start cycle
+      gpu_sim_start_kernel_inst[kernel1->get_uid()] = gpu_tot_sim_insn_per_kernel[kernel1->get_uid()] + gpu_sim_insn_per_kernel[kernel1->get_uid()];
+      gpu_sim_start_kernel_inst[kernel2->get_uid()] = gpu_tot_sim_insn_per_kernel[kernel2->get_uid()] + gpu_sim_insn_per_kernel[kernel2->get_uid()];
+
       kernel1->status =kernel_info_t::t_Kernel_Status::READY;
-    
-    // for k2
+      // for k2
       //kernel2->max_ctas_per_core =new unsigned int[m_shader_config->n_simt_cores_per_cluster](); // Memory allocation 
       m_shader_config[0].smk_max_cta(*kernel1, *kernel2);
       kernel2->status =kernel_info_t::t_Kernel_Status::READY;
+      memset(&prev_sampl_perf, 0, sizeof(t_perf_conf));
+
+       // Initialize dram memory counters
+      memset(m_memory_stats->row_buffer_access[kernel1->get_uid()], 0,  m_memory_config->m_n_mem*sizeof(unsigned long long));
+      memset(m_memory_stats->row_buffer_hits[kernel1->get_uid()], 0,  m_memory_config->m_n_mem*sizeof(unsigned long long));
+      memset(m_memory_stats->row_buffer_access[kernel2->get_uid()], 0,  m_memory_config->m_n_mem*sizeof(unsigned long long));
+      memset(m_memory_stats->row_buffer_hits[kernel2->get_uid()], 0,  m_memory_config->m_n_mem*sizeof(unsigned long long));
     }
   }
 
@@ -1969,12 +2055,84 @@ void gpgpu_sim::smk_max_cta_per_core() {
     m_shader_config[0].smk_max_cta(*kernel1, *kernel2);
   }*/
 }
+
+void gpgpu_sim::smk_reset_excedded_ctas() {
+
+for (unsigned k=0; k< get_num_running_kernels(); k++ )
+  if (m_running_kernels[k] != NULL) {
+    if (m_running_kernels[k]->status == kernel_info_t::t_Kernel_Status::READY) {
+      m_running_kernels[k]->num_excedded_ctas = 0;
+    }
+  }      
+}
+
+//Nico: save IPCs of ready kernels
+void gpgpu_sim::save_configuration_performance(t_perf_conf *conf, kernel_info_t *kernel1, kernel_info_t *kernel2) {
+
+  conf->id1 = kernel1->get_uid();
+  conf->id2 = kernel2->get_uid();
+
+  conf->num_ctas1 = kernel1->max_ctas_per_core[0] + kernel1->max_ctas_per_core[1];
+  conf->num_ctas2 = kernel2->max_ctas_per_core[0] + kernel2->max_ctas_per_core[1];
+
+  conf->ins1 = gpu_tot_sim_insn_per_kernel[kernel1->get_uid()] + gpu_sim_insn_per_kernel[kernel1->get_uid()] - gpu_sim_start_kernel_inst[kernel1->get_uid()];
+  conf->ins2 = gpu_tot_sim_insn_per_kernel[kernel2->get_uid()] + gpu_sim_insn_per_kernel[kernel2->get_uid()] - gpu_sim_start_kernel_inst[kernel2->get_uid()];
+
+  conf->ipc1 = (double) (gpu_tot_sim_insn_per_kernel[kernel1->get_uid()] + gpu_sim_insn_per_kernel[kernel1->get_uid()] - gpu_sim_start_kernel_inst[kernel1->get_uid()])/
+	  	(double)(gpu_tot_sim_cycle + gpu_sim_cycle-gpu_sim_start_kernel_cycle[kernel1->get_uid()]);
+
+  conf->ipc2 = (double) (gpu_tot_sim_insn_per_kernel[kernel2->get_uid()] + gpu_sim_insn_per_kernel[kernel2->get_uid()]-gpu_sim_start_kernel_inst[kernel2->get_uid()])/
+	  	(double)(gpu_tot_sim_cycle + gpu_sim_cycle-gpu_sim_start_kernel_cycle[kernel2->get_uid()]);
+
+}
+
+//Nico: weighted sppedup calculations
+void gpgpu_sim::coexecution_performace() {
+
+  kernel_info_t *kernels[2];
+  unsigned num_conc_kernels = 0;
+  // Nico: each 1000 cycles calculate ipc
+  if ((gpu_tot_sim_cycle + gpu_sim_cycle) % 1000 == 0) {
+    for (unsigned k=0; k< get_num_running_kernels(); k++ )
+       if (m_running_kernels[k] != NULL) {
+         if (m_running_kernels[k]->status ==  kernel_info_t::t_Kernel_Status::READY){
+          assert (num_conc_kernels < 2); // No more than two corruning kernels
+          kernels[num_conc_kernels] = m_running_kernels[k];
+          num_conc_kernels++;
+        }
+      }
+  }
+
+  // Update
+  if (num_conc_kernels== 2) {
+    double current_ipc[2];
+    for (unsigned k=0; k < num_conc_kernels; k++) {
+      current_ipc[k] =  (double) (gpu_tot_sim_insn_per_kernel[kernels[k]->get_uid()] + gpu_sim_insn_per_kernel[kernels[k]->get_uid()])/
+	  	(double)(gpu_tot_sim_cycle + gpu_sim_cycle-gpu_sim_start_kernel_cycle[kernels[k]->get_uid()]);
+    }
+
+    if (kernels[0]->save_ipc !=0 && kernels[1]->save_ipc != 0)
+    {
+      // Weighted speedup
+      double wgs = (current_ipc[0]/kernels[0]->save_ipc + current_ipc[1]/kernels[1]->save_ipc)/2.0;
+      printf("** wgs=%f **\n", wgs);
+      prev_ws = wgs;
+    }
+
+    kernels[0]->save_ipc = current_ipc[0];
+    kernels[1]->save_ipc = current_ipc[1];
+
+  }
+}
+  
  
 void gpgpu_sim::issue_block2core() {
 
   //Nico: Check if kernel has been launched a set max cta
-
   smk_max_cta_per_core();
+  
+  //Nico: Reset the number of excedded ctas of ready kernels
+  smk_reset_excedded_ctas();
 
   unsigned last_issued = m_last_cluster_issue;
   for (unsigned i = 0; i < m_shader_config->n_simt_clusters; i++) {

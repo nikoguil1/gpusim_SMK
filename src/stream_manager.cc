@@ -297,7 +297,6 @@ bool stream_manager::register_finished_kernel(unsigned grid_uid) {
       return true;
     }
   }
-
   return false;
 }
 

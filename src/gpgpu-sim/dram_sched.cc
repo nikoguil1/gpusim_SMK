@@ -172,6 +172,15 @@ dram_req_t *frfcfs_scheduler::schedule(unsigned bank, unsigned curr_row) {
       m_dram->hits_read_num++;
   }
 
+  // Nico: Also accumulate in array associate to kernels
+  if (req->kernel_id >= 1 && req->kernel_id <= req->m_gpu->get_num_running_kernels()){
+    m_stats->row_buffer_access[req->kernel_id][m_dram->id]++;
+    if (rowhit)
+      m_stats->row_buffer_hits[req->kernel_id][m_dram->id]++;
+  }
+  else
+     m_stats->row_buffer_access[0][m_dram->id]++;
+  
   m_stats->concurrent_row_access[m_dram->id][bank]++;
   m_stats->row_access[m_dram->id][bank]++;
   m_current_last_row[bank]->pop_back();
@@ -214,6 +223,10 @@ void dram_t::scheduler_frfcfs() {
     // if(req->data->get_type() != READ_REPLY && req->data->get_type() !=
     // WRITE_ACK)
     m_stats->total_n_access++;
+
+    // Nico: Access by kernel
+    if (req->kernel_id >=1 && req->kernel_id <=10)
+      m_stats->total_kernel_accesses[req->kernel_id]++;
 
     if (req->data->get_type() == WRITE_REQUEST) {
       m_stats->total_n_writes++;

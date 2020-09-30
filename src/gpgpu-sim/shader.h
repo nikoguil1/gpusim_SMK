@@ -1807,6 +1807,8 @@ class shader_core_mem_fetch_allocator : public mem_fetch_allocator {
         access, &inst_copy,
         access.is_write() ? WRITE_PACKET_SIZE : READ_PACKET_SIZE,
         inst.warp_id(), m_core_id, m_cluster_id, m_memory_config, cycle);
+        // Nico: Anotate kernel id generating this memory access
+        mf->set_kernel_id(inst.m_kernel_id);
     return mf;
   }
 
@@ -2117,6 +2119,8 @@ class shader_core_ctx : public core_t {
   unsigned m_n_active_cta;  // number of Cooperative Thread Arrays (blocks)
                             // currently running on this shader.
   unsigned m_cta_status[MAX_CTA_PER_SHADER];  // CTAs status
+  //Nico: annotatee start execution cycle of a hw cta
+  unsigned long long cta_start_cycle[MAX_CTA_PER_SHADER];
   unsigned m_not_completed;  // number of threads to be completed (==0 when all
                              // thread on this core completed)
   std::bitset<MAX_THREAD_PER_SM> m_active_threads;

@@ -51,7 +51,7 @@ mem_fetch *partition_mf_allocator::alloc(new_addr_type addr,
                                          bool wr,
                                          unsigned long long cycle) const {
   assert(wr);
-  mem_access_t access(type, addr, size, wr, m_memory_config->gpgpu_ctx);
+  mem_access_t access(0, type, addr, size, wr, m_memory_config->gpgpu_ctx); // Pass a fixed kernel id because when access to L2 the kernel id doens't care make
   mem_fetch *mf = new mem_fetch(access, NULL, WRITE_PACKET_SIZE, -1, -1, -1,
                                 m_memory_config, cycle);
   return mf;
@@ -736,14 +736,14 @@ memory_sub_partition::breakdown_request_to_sector_requests(mem_fetch *mf) {
       byte_sector_mask.set(k);
 
     for (unsigned j = start, i = 0; j <= end; ++j, ++i) {
-      const mem_access_t *ma = new mem_access_t(
+      const mem_access_t *ma = new mem_access_t(0, // Nico, Pass a fixed kernel id because when access to L2 the kernel id doens't care 
           mf->get_access_type(), mf->get_addr() + SECTOR_SIZE * i, SECTOR_SIZE,
           mf->is_write(), mf->get_access_warp_mask(),
           mf->get_access_byte_mask() & byte_sector_mask,
           std::bitset<SECTOR_CHUNCK_SIZE>().set(j), m_gpu->gpgpu_ctx);
 
       mem_fetch *n_mf =
-          new mem_fetch(*ma, NULL, mf->get_ctrl_size(), mf->get_wid(),
+          new mem_fetch(*ma, NULL, mf->get_ctrl_size(), mf->get_wid(), // Nico: Pass a fixed kernel id because when access to L2 the kernel id doens't care 
                         mf->get_sid(), mf->get_tpc(), mf->get_mem_config(),
                         m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle, mf);
 

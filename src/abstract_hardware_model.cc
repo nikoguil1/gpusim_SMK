@@ -453,7 +453,7 @@ void warp_inst_t::generate_mem_accesses() {
       for (unsigned i = 0; i < data_size; i++) byte_mask.set(idx + i);
     }
     for (a = accesses.begin(); a != accesses.end(); ++a)
-      m_accessq.push_back(mem_access_t(
+      m_accessq.push_back(mem_access_t(m_kernel_id,
           access_type, a->first, cache_block_size, is_write, a->second,
           byte_mask, mem_access_sector_mask_t(), m_config->gpgpu_ctx));
   }
@@ -715,7 +715,7 @@ void warp_inst_t::memory_coalescing_arch_reduce_and_send(
       assert(lower_half_used && upper_half_used);
     }
   }
-  m_accessq.push_back(mem_access_t(access_type, addr, size, is_write,
+  m_accessq.push_back(mem_access_t(m_kernel_id, access_type, addr, size, is_write,
                                    info.active, info.bytes, info.chunks,
                                    m_config->gpgpu_ctx));
 }

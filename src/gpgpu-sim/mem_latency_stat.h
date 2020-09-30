@@ -123,6 +123,11 @@ class memory_stats_t {
   unsigned total_n_access;
   unsigned total_n_reads;
   unsigned total_n_writes;
+
+  // Nico: count per kernel
+  unsigned long long **row_buffer_access;
+  unsigned long long **row_buffer_hits;
+  unsigned long long *total_kernel_accesses;
 };
 
 #endif /*MEM_LATENCY_STAT_H*/

@@ -65,6 +65,9 @@ class dram_req_t {
   unsigned int insertion_time;
   class mem_fetch *data;
   class gpgpu_sim *m_gpu;
+
+  // Nico: kernel id of the request dram instruction
+  unsigned int kernel_id;
 };
 
 struct bankgrp_t {
@@ -241,6 +244,7 @@ class dram_t {
   class Stats *mrqq_Dist;  // memory request queue inside DRAM
 
   friend class frfcfs_scheduler;
+
 };
 
 #endif /*DRAM_H*/

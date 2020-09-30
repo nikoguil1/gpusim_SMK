@@ -155,6 +155,7 @@ dram_t::dram_t(unsigned int partition_id, const memory_config *config,
     mrqq_Dist = StatCreate("mrqq_length", 1, queue_limit());
   else                                             // queue length is unlimited;
     mrqq_Dist = StatCreate("mrqq_length", 1, 64);  // track up to 64 entries
+
 }
 
 bool dram_t::full(bool is_write) const {
@@ -228,6 +229,8 @@ dram_req_t::dram_req_t(class mem_fetch *mf, unsigned banks,
   addr = mf->get_addr();
   insertion_time = (unsigned)m_gpu->gpu_sim_cycle;
   rw = data->get_is_write() ? WRITE : READ;
+  //Nico: Assigning kernel id identification
+  kernel_id = mf->get_kernel_id();
 }
 
 void dram_t::push(class mem_fetch *data) {
