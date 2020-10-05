@@ -359,6 +359,10 @@ class gpgpu_sim_config : public power_config,
     m_valid = true;
   }
 
+  // Nico
+  unsigned get_SMK_ctas_kernel1() const { return gpu_smk_mctas_kernel1; }
+  unsigned get_SMT_SMs_kernel1() const { return gpu_smt_SMs_kernel1; }
+
   unsigned num_shader() const { return m_shader_config.num_shader(); }
   unsigned num_cluster() const { return m_shader_config.n_simt_clusters; }
   unsigned get_max_concurrent_kernel() const { return max_concurrent_kernel; }
@@ -371,8 +375,7 @@ class gpgpu_sim_config : public power_config,
     return runtime_pending_launch_count_limit;
   }
 
-  unsigned get_smk_mctas_kernel1() {return gpu_smk_mctas_kernel1;}
-
+  
  private:
   void init_clock_domains(void);
 
@@ -429,6 +432,9 @@ class gpgpu_sim_config : public power_config,
 
   // Nico: max number of ctas per kernel that can be ruuning in a cluster
   unsigned gpu_smk_mctas_kernel1;
+  // Nico: num SMs (clusters) assigned to kernel1
+  unsigned gpu_smt_SMs_kernel1;
+  // Nico: Filename to save coexecution info
   char *gpu_smk_stats_filename;
 };
 

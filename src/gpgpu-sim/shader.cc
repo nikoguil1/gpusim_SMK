@@ -4164,34 +4164,60 @@ unsigned simt_core_cluster::get_n_active_sms() const {
   return n;
 }
 
-//Nico: scheduling ctas on a cluster taking into account cont_CTAs
+//Nico: SMT scheduling 
+unsigned simt_core_cluster::issue_block2core_SMT() {
+  unsigned num_blocks_issued = 0; 
+  std::vector<kernel_info_t *> rkernels; 
+  kernel_info_t *kernel;
+
+  unsigned int cont = 0;
+  rkernels = m_gpu->get_running_kernels();
+  unsigned int k_index[2];
+  
+  // Get kernel index of first two running kernels
+  for (unsigned k = 0; k < m_gpu->get_num_running_kernels(); k++) {
+    if (rkernels[k] != NULL){
+      k_index[cont] = k;
+      cont++;
+      if (cont >=2)
+        break;
+    }
+  }
+
+  assert(cont>=1); // At least one kernel has been launched
+
+  if (m_cluster_id < m_gpu->get_config().get_SMT_SMs_kernel1()) // Depending of cluster id, a kernel is selected
+    kernel = rkernels[k_index[0]];
+  else
+    if (cont ==2)
+      kernel = rkernels[k_index[1]];
+    else
+      kernel = NULL; // Kernel should be null if only a kernel is running in SMT mode
+
+  for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; i++) {
+		unsigned core = (i + m_cta_issue_next_core + 1) % m_config->n_simt_cores_per_cluster;
+    if (kernel != NULL) {	// Kernel should be null if only a kernel is running in SMT mode
+      if (m_gpu->kernel_more_cta_left(kernel) && m_core[core]->can_issue_1block(*kernel) == true) {
+        m_core[core]->issue_block2core(*kernel);
+			  num_blocks_issued++;
+			  m_cta_issue_next_core = core;
+        //printf("Asigning cta of kernel %d to cluster=%d core=%d\n",  kernel->get_uid(), m_cluster_id, core);
+			  break;
+      }
+    }
+    else
+      break;
+  }
+
+  return num_blocks_issued;
+}
+
+//Nico: SMK scheduling 
 unsigned simt_core_cluster::issue_block2core_SMK() {
   unsigned num_blocks_issued = 0; 
   kernel_info_t *kernel; 
   
   gpgpu_sim_config const gpu_config = m_gpu->get_config();
-
-  // Detect if a kernel has been evicted 
-
-  /*for (unsigned k = 0; k < m_gpu->get_num_running_kernels(); k++) {
-
-	  kernel = m_gpu->select_alternative_kernel(k);
-
-    if (kernel != NULL) {
-
-	
-      if (kernel->get_num_cta_running() == 0 && kernel->status == READY){
-        kernel->is_evicted = true;
-        kernel->is_scheduled = false;
-      }(CTA/)
-     
-      if (kernel->is_evicted == false && kernel->done() == true){ //Realmente done() mira que no este ejecutandose en core y además no le queden ctas
-        kernel->is_evicted= true;
-        //printf("Showing ipc of all kernels\n");
-        //m_gpu->print_stats(); // Nico: print ipc of all kernels;
-      }
-    }
-  }*/
   
   for (unsigned k = 0; k < m_gpu->get_num_running_kernels(); k++) {
 
@@ -4214,9 +4240,7 @@ unsigned simt_core_cluster::issue_block2core_SMK() {
       }
 		
 		  for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; i++) {
-			  unsigned core = (i + m_cta_issue_next_core + 1) % m_config->n_simt_cores_per_cluster;	
-          //if (!m_core[core]->can_issue_1block(*kernel))
-				   // assert(m_core[core]->can_issue_1block(*kernel)); // Nico, estar seguro quese ha calculado bien el numero de ctas per cluster
+			  unsigned core = (i + m_cta_issue_next_core + 1) % m_config->n_simt_cores_per_cluster;
 
 				 if (m_gpu->kernel_more_cta_left(kernel) && cont_CTAs[kernel->get_uid()-1][core] < kernel->max_ctas_per_core[core] /*&&   m_core[core]->can_issue_1block(*kernel)*/) {
           if (m_core[core]->can_issue_1block(*kernel) == true) {  // In some situations (when num ctas per kernels changes) ocuppied resources can be prevent launching new ctas. It should be a temporary situation.  
@@ -4227,18 +4251,12 @@ unsigned simt_core_cluster::issue_block2core_SMK() {
 			  		  m_cta_issue_next_core = core;
 			  		  k = m_gpu->get_num_running_kernels();
 			  		  break;
-          }
-            /*else
-            {
-              printf(" ** Warning: No available resources ** in cluster=%d core=%d, kernel_id=%d, ctas=%d, max_ctas=%d\n", 
-              m_cluster_id, core, kernel->get_uid(), cont_CTAs[kernel->get_uid()-1][core], kernel->max_ctas_per_core[core]);
-            }*/
-            
+          }  
 			  }
 		  }
 	  }
   }
-  //}
+  
   return num_blocks_issued;
 }  
 

@@ -289,10 +289,11 @@ bool stream_manager::register_finished_kernel(unsigned grid_uid) {
       stream->record_next_done();
       m_grid_id_to_stream.erase(grid_uid);
       kernel->notify_parent_finished();
-      // Nico: when kernel finished, obtain ipc per kernel value
-      m_gpu->print_only_ipc_stats(kernel);
+      // Nico: when kernel finished, obtain ipc per kernel value if CKE 
+      //if (m_gpu->get_config().get_SMK_ctas_kernel1() != 0 || m_gpu->get_config().get_SMT_SMs_kernel1() !=0 )
+        m_gpu->print_only_ipc_stats(kernel);
       kernel->status = kernel_info_t::t_Kernel_Status::FINISHED;
-      printf("===== Kernel %d terminado\n");
+      printf("===== Kernel %d terminado\n", kernel->get_uid());
       delete kernel;
       return true;
     }

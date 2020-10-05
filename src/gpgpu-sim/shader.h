@@ -2201,6 +2201,7 @@ class simt_core_cluster {
   unsigned issue_block2core();
   //Nico: new method declaration
   unsigned issue_block2core_SMK();
+  unsigned issue_block2core_SMT();
   void cache_flush();
   void cache_invalidate();
   bool icnt_injection_buffer_full(unsigned size, bool write);
