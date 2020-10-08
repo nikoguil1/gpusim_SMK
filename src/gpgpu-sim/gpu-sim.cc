@@ -1302,6 +1302,12 @@ void gpgpu_sim::print_only_ipc_stats(kernel_info_t *kernel)
       }
   }
 
+  // Calculated dram bandwith
+  double band_width=0;
+  for (int chip=0; chip< m_memory_config->m_n_mem; chip++){
+    band_with += 
+  }
+
   // Imax calculatio: maximum number of instructionsper cycle
   unsigned int ilp = 2; 
   unsigned int warpsize = m_config.m_shader_config.warp_size;
@@ -1328,8 +1334,8 @@ void gpgpu_sim::print_only_ipc_stats(kernel_info_t *kernel)
     fprintf(fp, "%s,%lld,",  kernel->name().c_str(), exec_cycles); // Single kernel total execution cycles
     fprintf(fp, "%lld,0,", gpu_sim_insn_per_kernel[kernel->get_uid()]); // Single kernel total executed instructions
     fprintf(fp, "%.2f, 0", ipc1); // IPC
-    fprintf(fp,",%lld, %lld,0,0", rb_total_accesses1, rb_total_hits1);
-    fprintf(fp, "%f\n", Bmax1);
+    fprintf(fp,",%lld, %lld,0,0,", rb_total_accesses1, rb_total_hits1);
+    fprintf(fp, "%.2f\n", Bmax1);
     fprintf(fp, "\n");
     fclose(fp);
     return;
