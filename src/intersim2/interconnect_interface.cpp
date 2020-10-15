@@ -175,6 +175,8 @@ void InterconnectInterface::Push(unsigned input_deviceID, unsigned output_device
   //TODO: Remove mem_fetch to reduce dependency
   Flit::FlitType packet_type;
   mem_fetch* mf = static_cast<mem_fetch*>(data);
+  //if (mf->get_kernel_id() == 0)
+  //  printf("Aqui\n");
 
   switch (mf->get_type()) {
     case READ_REQUEST:  packet_type = Flit::READ_REQUEST   ;break;
@@ -223,6 +225,11 @@ void* InterconnectInterface::Pop(unsigned deviceID)
     _round_robin_turn[subnet][icntID] = turn;
   }
 
+  mem_fetch* mf = static_cast<mem_fetch*>(data);
+  /*if (mf!=NULL)
+     if (mf->get_kernel_id() == 0)
+      printf("Aqui\n");
+  */
   return data;
 
 }

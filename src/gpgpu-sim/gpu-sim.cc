@@ -1302,24 +1302,30 @@ void gpgpu_sim::print_only_ipc_stats(kernel_info_t *kernel)
       }
   }
 
-  // Calculated dram bandwith
-  double band_width=0;
+  // Calculated dram bandwith of kernel
+  unsigned int *buf_bwutil=NULL;
+  unsigned long long g_bwutil1=0, g_bwutil2=0;
+  unsigned long long g_ncmd=0;
   for (int chip=0; chip< m_memory_config->m_n_mem; chip++){
-    band_with += 
+      buf_bwutil = m_memory_partition_unit[chip]->get_dram()->get_Kbwutil();
+      g_bwutil1 += buf_bwutil[kernel->get_uid()];
+      if (co_kernel != NULL) 
+        g_bwutil2 += buf_bwutil[co_kernel->get_uid()];
+      g_ncmd += m_memory_partition_unit[chip]->get_dram()->get_ncmd();
   }
 
   // Imax calculatio: maximum number of instructionsper cycle
-  unsigned int ilp = 2; 
+  unsigned int ilp = 2 * m_config.m_shader_config.n_simt_cores_per_cluster; 
   unsigned int warpsize = m_config.m_shader_config.warp_size;
   double Imax =  ilp * warpsize * m_config.num_cluster() * m_config.m_shader_config.n_simt_cores_per_cluster;
-          
+  double max_bw = 480.0; // In gigabytes/s        
   // Bmax according HSM paper (in GB/s)
   unsigned int request_size = 8*4; // Burst size -> eight words of 32 bits for GDDR5
 
   // Execution cycles
   unsigned long long exec_cycles = gpu_tot_sim_cycle + gpu_sim_cycle-gpu_sim_start_kernel_cycle[kernel->get_uid()];
 
-  // More values
+  // More values*1
   unsigned long long total_accesses1 = m_memory_stats->total_kernel_accesses[kernel->get_uid()];
   unsigned long long ins1 = gpu_sim_insn_per_kernel[kernel->get_uid()];
   double ipc1 = (double)ins1/(double)(exec_cycles);
@@ -1334,7 +1340,7 @@ void gpgpu_sim::print_only_ipc_stats(kernel_info_t *kernel)
     fprintf(fp, "%s,%lld,",  kernel->name().c_str(), exec_cycles); // Single kernel total execution cycles
     fprintf(fp, "%lld,0,", gpu_sim_insn_per_kernel[kernel->get_uid()]); // Single kernel total executed instructions
     fprintf(fp, "%.2f, 0", ipc1); // IPC
-    fprintf(fp,",%lld, %lld,0,0,", rb_total_accesses1, rb_total_hits1);
+    fprintf(fp,",%lld, %lld,%.2f, 0.0, 0, 0,", rb_total_accesses1, rb_total_hits1, (double)g_bwutil1/(double)g_ncmd * max_bw);
     fprintf(fp, "%.2f\n", Bmax1);
     fprintf(fp, "\n");
     fclose(fp);
@@ -1370,9 +1376,11 @@ void gpgpu_sim::print_only_ipc_stats(kernel_info_t *kernel)
   if (kernel->get_uid() < co_kernel->get_uid()){ // First launched kernel has finished:
     fprintf(fp, "%lld,", ins1); // Number of instructions executed by the first kernel
     fprintf(fp, "%lld,", ins2); // Number of instructions executed by the second kernel
+    
     fprintf(fp, "%.2f,", ipc1); // IPC for coexection
     fprintf(fp, "%.2f,", ipc2); // IPC for coexection 
-    fprintf(fp,"%lld, %lld, %lld, %lld, %f, %f", rb_total_accesses1, rb_total_hits1, rb_total_accesses2, rb_total_hits2, Bmax1, Bmax2);
+    fprintf(fp,"%lld, %lld, %lld, %lld,  %.2f, %.2f, %.2f, %.2f", rb_total_accesses1, rb_total_hits1, rb_total_accesses2, rb_total_hits2, 
+    (double)g_bwutil1/(double)g_ncmd * max_bw, (double)g_bwutil2/(double)g_ncmd * max_bw, Bmax1, Bmax2);
   }
   else
   {
@@ -1380,7 +1388,8 @@ void gpgpu_sim::print_only_ipc_stats(kernel_info_t *kernel)
     fprintf(fp, "%lld,", ins1); 
     fprintf(fp, "%.2f,", ipc2);
     fprintf(fp, "%.2f,", ipc1);
-    fprintf(fp,"%lld, %lld, %lld, %lld, %f, %f", rb_total_accesses2, rb_total_hits2, rb_total_accesses1, rb_total_hits1, Bmax2, Bmax1);
+    fprintf(fp,"%lld, %lld, %lld, %lld, %.2f, %.2f, %.2f, %.2f", rb_total_accesses2, rb_total_hits2, rb_total_accesses1, rb_total_hits1, 
+    (double)g_bwutil2/(double)g_ncmd * max_bw, (double)g_bwutil1/(double)g_ncmd * max_bw, Bmax2, Bmax1);
   }
   
   fprintf(fp, "\n");
@@ -2239,6 +2248,11 @@ void gpgpu_sim::cycle() {
           mf->set_status(IN_ICNT_TO_SHADER, gpu_sim_cycle + gpu_tot_sim_cycle);
           ::icnt_push(m_shader_config->mem2device(i), mf->get_tpc(), mf,
                       response_size);
+          /*if (mf) {
+            printf("Request_id = %d\n", mf->get_request_id());
+            if (mf->get_request_id() == 365)
+              printf("Aqui1\n");
+          }*/
           m_memory_sub_partition[i]->pop();
           partiton_replys_in_parallel_per_cycle++;
         } else {
@@ -2284,6 +2298,12 @@ void gpgpu_sim::cycle() {
         gpu_stall_dramfull++;
       } else {
         mem_fetch *mf = (mem_fetch *)icnt_pop(m_shader_config->mem2device(i));
+        //
+       /* if (mf) { // Nico
+            printf("Pop Request_id = %d\n", mf->get_request_id());
+            if (mf->get_request_id() == 365)
+              printf("Aqui1\n");
+          }*/
         m_memory_sub_partition[i]->push(mf, gpu_sim_cycle + gpu_tot_sim_cycle);
         if (mf) partiton_reqs_in_parallel_per_cycle++;
       }

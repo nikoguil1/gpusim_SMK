@@ -90,6 +90,9 @@ dram_t::dram_t(unsigned int partition_id, const memory_config *config,
   write_to_read_ratio_blp_rw_average = 0;
   bkgrp_parallsim_rw = 0;
 
+  // Nico: Initializae couner for each kernel
+  k_bwutil = (unsigned  int *) calloc (10, sizeof(unsigned int));
+
   rw = READ;  // read mode is default
 
   bkgrp = (bankgrp_t **)calloc(sizeof(bankgrp_t *), m_config->nbkgrp);
@@ -396,6 +399,7 @@ void dram_t::cycle() {
   bool issued_col_cmd = false;
   bool issued_row_cmd = false;
 
+  unsigned int kid=0;
   if (m_config->dual_bus_interface) {
     // dual bus interface
     // issue one row command and one column command
@@ -406,6 +410,10 @@ void dram_t::cycle() {
     }
     for (unsigned i = 0; i < m_config->nbk; i++) {
       unsigned j = (i + prio) % m_config->nbk;
+       if (bk[j]->mrq!=0)
+        kid = bk[j]->mrq->kernel_id; // Nico
+      else
+        kid = 0;
       issued_row_cmd = issue_row_command(j);
       if (issued_row_cmd) break;
     }
@@ -449,7 +457,8 @@ void dram_t::cycle() {
     n_activity++;
     n_activity_partial++;
   }
-  n_cmd++;
+  n_cmd++;;
+
   n_cmd_partial++;
   if (issued) {
     issued_total++;
@@ -545,6 +554,13 @@ bool dram_t::issue_col_command(int j) {
   bool issued = false;
   unsigned grp = get_bankgrp_number(j);
   if (bk[j]->mrq) {  // if currently servicing a memory request
+    mem_fetch *mf = (mem_fetch *)bk[j]->mrq->data;
+    // Nico: get krnel id of mem_fetch
+    int kid = bk[j]->mrq->kernel_id;
+    if (kid == 0) {
+      printf("Error en valor de kid=%d para request %d\n", kid, mf->get_request_id());
+      exit(-1);
+    }
     bk[j]->mrq->data->set_status(
         IN_PARTITION_DRAM, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
     // correct row activated for a READ
@@ -571,6 +587,10 @@ bool dram_t::issue_col_command(int j) {
       bwutil += m_config->BL / m_config->data_command_freq_ratio;
       bwutil_partial += m_config->BL / m_config->data_command_freq_ratio;
       bk[j]->n_access++;
+
+      // Nico
+      k_bwutil[kid] += m_config->BL / m_config->data_command_freq_ratio;
+
 
 #ifdef DRAM_VERIFY
       PRINT_CYCLE = 1;
@@ -605,6 +625,8 @@ bool dram_t::issue_col_command(int j) {
         n_wr++;
       bwutil += m_config->BL / m_config->data_command_freq_ratio;
       bwutil_partial += m_config->BL / m_config->data_command_freq_ratio;
+      // Nico: bwutil per kernel
+      k_bwutil[kid] += m_config->BL / m_config->data_command_freq_ratio;
 #ifdef DRAM_VERIFY
       PRINT_CYCLE = 1;
       printf("\tWR  Bk:%d Row:%03x Col:%03x \n", j, bk[j]->curr_row,

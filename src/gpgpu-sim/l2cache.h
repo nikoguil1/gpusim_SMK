@@ -99,6 +99,8 @@ class memory_partition_unit {
     return m_gpu;
   }
 
+  dram_t *get_dram(){ return m_dram;} 
+
  private:
   unsigned m_id;
   const memory_config *m_config;

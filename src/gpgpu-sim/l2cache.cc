@@ -292,6 +292,11 @@ void memory_partition_unit::dram_cycle() {
   // of the original sub partition
   mem_fetch *mf_return = m_dram->return_queue_top();
   if (mf_return) {
+    /*if (mf_return) { // Nico
+            printf("L2 Request_id = %d\n", mf_return->get_request_id());
+            if (mf_return->get_request_id() == 365)
+              printf("Aqui1\n");
+          }*/
     unsigned dest_global_spid = mf_return->get_sub_partition_id();
     int dest_spid = global_sub_partition_id_to_local_id(dest_global_spid);
     assert(m_sub_partition[dest_spid]->get_id() == dest_global_spid);
@@ -746,6 +751,8 @@ memory_sub_partition::breakdown_request_to_sector_requests(mem_fetch *mf) {
           new mem_fetch(*ma, NULL, mf->get_ctrl_size(), mf->get_wid(), // Nico: Pass a fixed kernel id because when access to L2 the kernel id doens't care 
                         mf->get_sid(), mf->get_tpc(), mf->get_mem_config(),
                         m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle, mf);
+      // Nico: passing kernel id to new mem_fetch
+      n_mf->set_kernel_id(mf->get_kernel_id());
 
       result.push_back(n_mf);
       byte_sector_mask <<= SECTOR_SIZE;

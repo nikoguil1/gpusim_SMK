@@ -1315,6 +1315,8 @@ enum cache_request_status data_cache::wr_miss_wa_naive(
       mem_fetch *wb = m_memfetch_creator->alloc(
           evicted.m_block_addr, m_wrbk_type, evicted.m_modified_size, true,
           m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle);
+      // Nico: copy kernel id in the new mem_fetch
+      wb->set_kernel_id(mf->get_kernel_id());
       send_write_request(wb, cache_event(WRITE_BACK_REQUEST_SENT, evicted),
                          time, events);
     }
@@ -1358,6 +1360,8 @@ enum cache_request_status data_cache::wr_miss_wa_fetch_on_write(
         mem_fetch *wb = m_memfetch_creator->alloc(
             evicted.m_block_addr, m_wrbk_type, evicted.m_modified_size, true,
             m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle);
+        // Nico: copy kernel id in the new mem_fetch
+        wb->set_kernel_id(mf->get_kernel_id());
         send_write_request(wb, cache_event(WRITE_BACK_REQUEST_SENT, evicted),
                            time, events);
       }
@@ -1424,6 +1428,8 @@ enum cache_request_status data_cache::wr_miss_wa_fetch_on_write(
         mem_fetch *wb = m_memfetch_creator->alloc(
             evicted.m_block_addr, m_wrbk_type, evicted.m_modified_size, true,
             m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle);
+        // Nico: copy kernel id in the new mem_fetch
+        wb->set_kernel_id(mf->get_kernel_id());
         send_write_request(wb, cache_event(WRITE_BACK_REQUEST_SENT, evicted),
                            time, events);
       }
@@ -1473,6 +1479,8 @@ enum cache_request_status data_cache::wr_miss_wa_lazy_fetch_on_read(
       mem_fetch *wb = m_memfetch_creator->alloc(
           evicted.m_block_addr, m_wrbk_type, evicted.m_modified_size, true,
           m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle);
+       // Nico: copy kernel id in the new mem_fetch
+      wb->set_kernel_id(mf->get_kernel_id());
       send_write_request(wb, cache_event(WRITE_BACK_REQUEST_SENT, evicted),
                          time, events);
     }
@@ -1545,6 +1553,8 @@ enum cache_request_status data_cache::rd_miss_base(
       mem_fetch *wb = m_memfetch_creator->alloc(
           evicted.m_block_addr, m_wrbk_type, evicted.m_modified_size, true,
           m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle);
+      // Nico: copy kernel id in the new mem_fetch
+      wb->set_kernel_id(mf->get_kernel_id());
       send_write_request(wb, WRITE_BACK_REQUEST_SENT, time, events);
     }
     return MISS;

@@ -124,8 +124,10 @@ class mem_fetch {
   mem_fetch *get_original_mf() { return original_mf; }
   mem_fetch *get_original_wr_mf() { return original_wr_mf; }
 
+  // Nico
   unsigned int get_kernel_id() { return kernel_id; }
   void set_kernel_id(unsigned int kid) { kernel_id = kid;}
+  unsigned int get_request_id(){return m_request_uid;}
 
  private:
   // request source information

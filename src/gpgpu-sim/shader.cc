@@ -884,6 +884,8 @@ void shader_core_ctx::fetch() {
               acc, NULL /*we don't have an instruction yet*/, READ_PACKET_SIZE,
               warp_id, m_sid, m_tpc, m_memory_config,
               m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle);
+          // Nico: I am not sure if kernel id is neceessary but just in case ...
+          mf->set_kernel_id(kernel_id);
           std::list<cache_event> events;
           enum cache_request_status status = m_L1I->access(
               (new_addr_type)ppc, mf,
@@ -1686,6 +1688,10 @@ mem_stage_stall_type ldst_unit::process_cache_access(
     cache_t *cache, new_addr_type address, warp_inst_t &inst,
     std::list<cache_event> &events, mem_fetch *mf,
     enum cache_request_status status) {
+   
+  // Nico: I am not sure if kernel id is neceessary but just in case ...
+  mf->set_kernel_id(inst.m_kernel_id);
+
   mem_stage_stall_type result = NO_RC_FAIL;
   bool write_sent = was_write_sent(events);
   bool read_sent = was_read_sent(events);
@@ -1757,6 +1763,9 @@ mem_stage_stall_type ldst_unit::process_memory_access_queue_l1cache(
       unsigned bank_id = m_config->m_L1D_config.set_bank(mf->get_addr());
       assert(bank_id < m_config->m_L1D_config.l1_banks);
 
+      // Nico: I am not sure if kernel id is neceessary but just in case ...
+      mf->set_kernel_id(inst.m_kernel_id);
+
       if ((l1_latency_queue[bank_id][m_config->m_L1D_config.l1_latency - 1]) ==
           NULL) {
         l1_latency_queue[bank_id][m_config->m_L1D_config.l1_latency - 1] = mf;
@@ -1787,6 +1796,8 @@ mem_stage_stall_type ldst_unit::process_memory_access_queue_l1cache(
         m_mf_allocator->alloc(inst, inst.accessq_back(),
                               m_core->get_gpu()->gpu_sim_cycle +
                                   m_core->get_gpu()->gpu_tot_sim_cycle);
+    // Nico: I am not sure if kernel id is neceessary but just in case ...
+    mf->set_kernel_id(inst.m_kernel_id);
     std::list<cache_event> events;
     enum cache_request_status status = cache->access(
         mf->get_addr(), mf,
@@ -1928,6 +1939,9 @@ bool ldst_unit::memory_cycle(warp_inst_t &inst,
           m_mf_allocator->alloc(inst, access,
                                 m_core->get_gpu()->gpu_sim_cycle +
                                     m_core->get_gpu()->gpu_tot_sim_cycle);
+      // Nico: I am not sure if kernel id is neceessary but just in case ...
+      mf->set_kernel_id(inst.m_kernel_id);
+      
       m_icnt->push(mf);
       inst.accessq_pop_back();
       // inst.clear_active( access.get_warp_mask() );
@@ -3219,12 +3233,13 @@ unsigned int shader_core_config::max_cta(const kernel_info_t &k) const {
 
   static const struct gpgpu_ptx_sim_info *last_kinfo = NULL;
   if (last_kinfo !=
-      kernel_info) {  // Only print out stats if kernel_info struct changes
+      kernel_info && k.get_next_cta_id_single() < n_simt_clusters) {  // Only print out stats if kernel_info struct changes // Nico message is printed for samll ctas id
     last_kinfo = kernel_info;
-    printf("GPGPU-Sim uArch: CTA/core = %u, limited by:", result);
+    printf("Kernel_id =%d CTA/core = %u, limited by:", k.get_uid(), result);
     if (result == result_thread) printf(" threads");
     if (result == result_shmem) printf(" shmem");
     if (result == result_regs) printf(" regs");
+
     if (result == result_cta) printf(" cta_limit");
     printf("\n");
   }
@@ -4374,6 +4389,12 @@ void simt_core_cluster::icnt_inject_request_packet(class mem_fetch *mf) {
   unsigned destination = mf->get_sub_partition_id();
   mf->set_status(IN_ICNT_TO_MEM,
                  m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+  // Nico
+  /*if (mf) {
+            printf("Request_id = %d\n", mf->get_request_id());
+            if (mf->get_request_id() == 365)
+              printf("Aqui1\n");
+          }*/
   if (!mf->get_is_write() && !mf->isatomic())
     ::icnt_push(m_cluster_id, m_config->mem2device(destination), (void *)mf,
                 mf->get_ctrl_size());
@@ -4385,6 +4406,11 @@ void simt_core_cluster::icnt_inject_request_packet(class mem_fetch *mf) {
 void simt_core_cluster::icnt_cycle() {
   if (!m_response_fifo.empty()) {
     mem_fetch *mf = m_response_fifo.front();
+    /*if (mf) {
+            printf("ICNT Request_id = %d\n", mf->get_request_id());
+            if (mf->get_request_id() == 365)
+              printf("Aqui1\n");
+          }*/
     unsigned cid = m_config->sid_to_cid(mf->get_sid());
     if (mf->get_access_type() == INST_ACC_R) {
       // instruction fetch response
@@ -4404,6 +4430,11 @@ void simt_core_cluster::icnt_cycle() {
   if (m_response_fifo.size() < m_config->n_simt_ejection_buffer_size) {
     mem_fetch *mf = (mem_fetch *)::icnt_pop(m_cluster_id);
     if (!mf) return;
+    /*if (mf) {
+            printf("ICNT Request_id = %d\n", mf->get_request_id());
+            if (mf->get_request_id() == 365)
+              printf("Aqui1\n");
+          }*/
     assert(mf->get_tpc() == m_cluster_id);
     assert(mf->get_type() == READ_REPLY || mf->get_type() == WRITE_ACK);
 

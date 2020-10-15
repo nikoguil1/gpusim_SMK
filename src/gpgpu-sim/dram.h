@@ -141,6 +141,10 @@ class dram_t {
 
   const memory_config *m_config;
 
+   // Nico: recover array
+  unsigned int *get_Kbwutil(){return k_bwutil;}
+  unsigned long long get_ncmd(){return n_cmd;} 
+
  private:
   bankgrp_t **bkgrp;
 
@@ -152,6 +156,7 @@ class dram_t {
   void scheduler_fifo();
   void scheduler_frfcfs();
 
+  // Nico: Added a second parameter
   bool issue_col_command(int j);
   bool issue_row_command(int j);
 
@@ -244,6 +249,9 @@ class dram_t {
   class Stats *mrqq_Dist;  // memory request queue inside DRAM
 
   friend class frfcfs_scheduler;
+
+  // Nico: Support for each kernel 
+  unsigned int *k_bwutil;
 
 };
 
