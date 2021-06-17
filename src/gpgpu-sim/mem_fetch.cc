@@ -68,15 +68,15 @@ mem_fetch::mem_fetch(const mem_access_t &access, const warp_inst_t *inst,
   mem_access_t acc = access; 
   
   if (inst != NULL) {
-    if (inst->m_kernel_id == 0)
-    printf("Aqui");
+    //if (inst->m_kernel_id == 0)
+    //printf("Aqui");
     kernel_id = inst->m_kernel_id;
   }
   else
     kernel_id = 0;
 
-  if (m_request_uid == 265184)
-    printf("Aqui\n"); 
+  //if (m_request_uid == 265184)
+   // printf("Aqui\n"); 
 }
 
 mem_fetch::~mem_fetch() { m_status = MEM_FETCH_DELETED; }

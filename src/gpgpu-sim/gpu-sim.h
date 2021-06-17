@@ -552,7 +552,8 @@ class gpgpu_sim : public gpgpu_t {
 
   //Nico: function called each time a new kernel is launched to estabish max ctas per core 
   void smk_max_cta_per_core();
-
+  // Nico: dunamuc version of the previous function
+  void dynamic_smk_max_cta_per_core();
   unsigned threads_per_core() const;
   bool get_more_cta_left() const;
   bool kernel_more_cta_left(kernel_info_t *kernel) const;
@@ -604,6 +605,8 @@ class gpgpu_sim : public gpgpu_t {
   void coexecution_performace(void);
   void save_configuration_performance(t_perf_conf *conf, kernel_info_t *kernel1, kernel_info_t *kernel2);
   void smk_reset_excedded_ctas(void);
+  void single_execution_two_kernels();
+  void flexsched_smk();
   void issue_block2core();
   void print_dram_stats(FILE *fout) const;
   void shader_print_runtime_stat(FILE *fout);
@@ -661,7 +664,9 @@ class gpgpu_sim : public gpgpu_t {
   t_perf_conf prev_conf_perf, curr_conf_perf, prev_sampl_perf; // Save configuration performance
   unsigned int perf_sampl_interval; // Perofmrance sampling rate rate in cycles
   unsigned long long last_sampl_cycle=0;
+  unsigned int max_search; // how max ws is searched: 0-> initial_conf, 1->forward, 2->backward  
   bool perf_sampl_active=true;
+  
   
   unsigned long long last_liveness_message_time;
 

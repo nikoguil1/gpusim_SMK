@@ -143,7 +143,7 @@ class dram_t {
 
    // Nico: recover array
   unsigned int *get_Kbwutil(){return k_bwutil;}
-  unsigned long long get_ncmd(){return n_cmd;} 
+   unsigned long long get_ncmd(){return n_cmd;} 
 
  private:
   bankgrp_t **bkgrp;
@@ -252,7 +252,6 @@ class dram_t {
 
   // Nico: Support for each kernel 
   unsigned int *k_bwutil;
-
 };
 
 #endif /*DRAM_H*/

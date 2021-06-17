@@ -3145,6 +3145,7 @@ void shader_core_config::smk_max_cta(const kernel_info_t &k1, const kernel_info_
       printf("GPGPU-Sim uArch: Warning ** Kernel cannot launch any cta in this core\n");
     }
   }
+  printf("SMK: k1(%d, %d) k2(%d, %d)\n", k1.max_ctas_per_core[0], k1.max_ctas_per_core[1], k2.max_ctas_per_core[0], k2.max_ctas_per_core[1]);
 
   //Nico: Attention: The follwinf code can give probkems with smk if activated. Recommendation: adaptive_cache_config->false.
   if (adaptive_cache_config && !k2.cache_config_set) {
@@ -4259,13 +4260,13 @@ unsigned simt_core_cluster::issue_block2core_SMK() {
 
 				 if (m_gpu->kernel_more_cta_left(kernel) && cont_CTAs[kernel->get_uid()-1][core] < kernel->max_ctas_per_core[core] /*&&   m_core[core]->can_issue_1block(*kernel)*/) {
           if (m_core[core]->can_issue_1block(*kernel) == true) {  // In some situations (when num ctas per kernels changes) ocuppied resources can be prevent launching new ctas. It should be a temporary situation.  
-            //printf("KerneliId=%2d cluster=%2d core=%2d num_ctas=%d, max_ctas=%d \n", kernel->get_uid(), m_cluster_id, core, cont_CTAs[kernel->get_uid()-1][core], kernel->max_ctas_per_core[core]);
             m_core[core]->issue_block2core(*kernel);
             cont_CTAs[kernel->get_uid()-1][core]++;
-			  		  num_blocks_issued++;
-			  		  m_cta_issue_next_core = core;
-			  		  k = m_gpu->get_num_running_kernels();
-			  		  break;
+			  		num_blocks_issued++;
+            //printf("KerneliId=%d \t cluster=%2d \t core=%2d \t num_ctas=%d \t max_ctas=%d issued_ctas=%d \t exceeded_ctas=%d\n", kernel->get_uid(), m_cluster_id, core, cont_CTAs[kernel->get_uid()-1][core], kernel->max_ctas_per_core[core], kernel->get_next_cta_id_single(), kernel->num_excedded_ctas);
+			  		m_cta_issue_next_core = core;
+			  		k = m_gpu->get_num_running_kernels();
+			  		break;
           }  
 			  }
 		  }
@@ -4282,7 +4283,7 @@ unsigned simt_core_cluster::issue_block2core() {
     unsigned core =
         (i + m_cta_issue_next_core + 1) % m_config->n_simt_cores_per_cluster;
 
-    kernel_info_t *kernel;
+    kernel_info_t *kernel=NULL;
     // Jin: fetch kernel according to concurrent kernel setting
     if (m_config->gpgpu_concurrent_kernel_sm) {  // concurrent kernel on sm
       // always select latest issued kernel
@@ -4301,6 +4302,13 @@ unsigned simt_core_cluster::issue_block2core() {
         }
       }
     }
+
+  // Nico: Annotate starting cycle for statistics
+    if (kernel != NULL)
+      if (kernel->status == kernel_info_t::t_Kernel_Status::INIT){ // If it is a new kernel
+          m_gpu->gpu_sim_start_kernel_cycle [kernel->get_uid()]= m_gpu->gpu_sim_cycle+m_gpu->gpu_tot_sim_cycle;
+         kernel->status = kernel_info_t::t_Kernel_Status::READY;
+      }
 
     if (m_gpu->kernel_more_cta_left(kernel) &&
         //            (m_core[core]->get_n_active_cta() <

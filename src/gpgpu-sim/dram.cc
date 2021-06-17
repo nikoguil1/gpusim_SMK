@@ -457,7 +457,7 @@ void dram_t::cycle() {
     n_activity++;
     n_activity_partial++;
   }
-  n_cmd++;;
+  n_cmd++;
 
   n_cmd_partial++;
   if (issued) {
