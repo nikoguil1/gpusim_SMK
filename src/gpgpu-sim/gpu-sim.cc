@@ -1265,6 +1265,18 @@ void gpgpu_sim::print_only_ipc_stats(kernel_info_t *kernel)
 
   // Localize coexecutiing ready kernel
   kernel_info_t *co_kernel=NULL;
+  for (int k=0; k<get_num_running_kernels();k++){
+    if (m_running_kernels[k]!=NULL) {
+      if (kernel != m_running_kernels[k]){
+          co_kernel = m_running_kernels[k];
+          break;
+      }
+    }
+  }
+  
+  
+  
+  /*kernel_info_t *co_kernel=NULL;
   int cont =0;
   for (int k=0; k<get_num_running_kernels();k++){
     if (m_running_kernels[k]!=NULL) {
@@ -1274,11 +1286,13 @@ void gpgpu_sim::print_only_ipc_stats(kernel_info_t *kernel)
     }
   }
 
+  
   if (cont > 1) {
     fprintf(fp,"Error: More than two kernels are coexecuting\n");
     fclose(fp);
     exit(0); 
   }
+  */
   
   unsigned int resources1, resources2;
   char type[10];
@@ -1368,8 +1382,8 @@ void gpgpu_sim::print_only_ipc_stats(kernel_info_t *kernel)
     fprintf(fp, "%s,%d,%d,", co_kernel->name().c_str(), resources2, co_kernel->get_next_cta_id_single()); // Print info of second launched kernel
   }
   else {
-    fprintf(fp,"%s,%s,%d,%d,", type, co_kernel->name().c_str(), resources2, co_kernel->get_next_cta_id_single()); // Second launched kernel has finished. Print info 
-    fprintf(fp, "%s,%d,%d,", kernel->name().c_str(), resources1, kernel->get_next_cta_id_single()); 
+    fprintf(fp,"%s,%s,%d,%d,", type, co_kernel->name().c_str(), resources1, co_kernel->get_next_cta_id_single()); // Second launched kernel has finished. Print info 
+    fprintf(fp, "%s,%d,%d,", kernel->name().c_str(), resources2, kernel->get_next_cta_id_single()); 
   }
   
   fprintf(fp, "%s, %lld,",  kernel->name().c_str(), exec_cycles); // Name and cycles executed by the finishing kernel 

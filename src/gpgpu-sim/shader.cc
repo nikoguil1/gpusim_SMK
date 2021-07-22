@@ -52,6 +52,8 @@
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 
+#define CHECK_EARLY_STOP // Simulation is stopped whem there are availables resources in a SM and no more ctas are available
+
 mem_fetch *shader_core_mem_fetch_allocator::alloc(
     new_addr_type addr, mem_access_type type, unsigned size, bool wr,
     unsigned long long cycle) const {
@@ -4220,6 +4222,12 @@ unsigned simt_core_cluster::issue_block2core_SMT() {
         //printf("Asigning cta of kernel %d to cluster=%d core=%d\n",  kernel->get_uid(), m_cluster_id, core);
 			  break;
       }
+      #ifdef CHECK_EARLY_STOP
+      else {
+          if (m_gpu->kernel_more_cta_left(kernel) == false && m_core[core]->can_issue_1block(*kernel) == true)
+            m_gpu->print_only_ipc_stats(kernel);
+      }
+      #endif
     }
     else
       break;
