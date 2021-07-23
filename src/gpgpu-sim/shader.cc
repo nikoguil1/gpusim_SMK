@@ -4266,7 +4266,7 @@ unsigned simt_core_cluster::issue_block2core_SMK() {
 		  for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; i++) {
 			  unsigned core = (i + m_cta_issue_next_core + 1) % m_config->n_simt_cores_per_cluster;
 
-				 if (m_gpu->kernel_more_cta_left(kernel) && cont_CTAs[kernel->get_uid()-1][core] < kernel->max_ctas_per_core[core] /*&&   m_core[core]->can_issue_1block(*kernel)*/) {
+				if (m_gpu->kernel_more_cta_left(kernel) && cont_CTAs[kernel->get_uid()-1][core] < kernel->max_ctas_per_core[core] /*&&   m_core[core]->can_issue_1block(*kernel)*/) {
           if (m_core[core]->can_issue_1block(*kernel) == true) {  // In some situations (when num ctas per kernels changes) ocuppied resources can be prevent launching new ctas. It should be a temporary situation.  
             m_core[core]->issue_block2core(*kernel);
             cont_CTAs[kernel->get_uid()-1][core]++;
@@ -4277,6 +4277,12 @@ unsigned simt_core_cluster::issue_block2core_SMK() {
 			  		break;
           }  
 			  }
+        #ifdef CHECK_EARLY_STOP
+        else {
+          if (m_gpu->kernel_more_cta_left(kernel) == false && cont_CTAs[kernel->get_uid()-1][core] < kernel->max_ctas_per_core[core] )
+            m_gpu->print_only_ipc_stats(kernel);
+        }
+        #endif
 		  }
 	  }
   }
