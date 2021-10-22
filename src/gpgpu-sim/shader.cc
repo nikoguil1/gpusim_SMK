@@ -4315,6 +4315,7 @@ unsigned simt_core_cluster::issue_block2core() {
           kernel = k;
         }
       }
+      
     }
 
   // Nico: Annotate starting cycle for statistics
@@ -4331,6 +4332,10 @@ unsigned simt_core_cluster::issue_block2core() {
       m_core[core]->issue_block2core(*kernel);
       num_blocks_issued++;
       m_cta_issue_next_core = core;
+      #ifdef CHECK_EARLY_STOP
+        if (m_gpu->kernel_more_cta_left(kernel) == false)
+          m_gpu->print_only_ipc_stats(kernel);
+      #endif
       break;
     }
   }

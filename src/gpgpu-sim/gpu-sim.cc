@@ -1382,8 +1382,8 @@ void gpgpu_sim::print_only_ipc_stats(kernel_info_t *kernel)
     fprintf(fp, "%s,%d,%d,", co_kernel->name().c_str(), resources2, co_kernel->get_next_cta_id_single()); // Print info of second launched kernel
   }
   else {
-    fprintf(fp,"%s,%s,%d,%d,", type, co_kernel->name().c_str(), resources1, co_kernel->get_next_cta_id_single()); // Second launched kernel has finished. Print info 
-    fprintf(fp, "%s,%d,%d,", kernel->name().c_str(), resources2, kernel->get_next_cta_id_single()); 
+    fprintf(fp,"%s,%s,%d,%d,", type, co_kernel->name().c_str(), resources2, co_kernel->get_next_cta_id_single()); // Second launched kernel has finished. Print info 
+    fprintf(fp, "%s,%d,%d,", kernel->name().c_str(), resources1, kernel->get_next_cta_id_single()); 
   }
   
   fprintf(fp, "%s, %lld,",  kernel->name().c_str(), exec_cycles); // Name and cycles executed by the finishing kernel 
