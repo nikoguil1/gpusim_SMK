@@ -52,7 +52,7 @@
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 
-#define CHECK_EARLY_STOP // Simulation is stopped whem there are availables resources in a SM and no more ctas are available
+#define CHECK_EARLY_STOP // Simulation is stopped whem there are available resources in a SM and no more ctas are available
 
 mem_fetch *shader_core_mem_fetch_allocator::alloc(
     new_addr_type addr, mem_access_type type, unsigned size, bool wr,

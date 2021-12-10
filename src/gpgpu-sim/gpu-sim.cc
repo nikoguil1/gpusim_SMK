@@ -1949,11 +1949,18 @@ void gpgpu_sim::smk_max_cta_per_core() {
     for (unsigned int c=0; c < k1_ctas % m_shader_config->n_simt_cores_per_cluster; c++)
       kernel1->max_ctas_per_core[c]++;
     }
-    else printf("Raro: No debería haber entrado aquí porque han terminado uno de los kernels en coejecución\n");
+    else {
+      printf("Raro: No debería haber entrado aquí porque han terminado uno de los kernel en coejecución \n o el primer kernel no tiene uid=1 sino que es %d\n", kernel1->get_uid());
+      //exit (-1);
+    }
   }
 
   // Nico: Si se comenta lo de abajo, no se ejecutan ctas de kernel2
-  if (kernel2 != NULL) {  
+  if (kernel2 != NULL) { 
+    if (kernel2->get_uid()!=2){
+      printf("El segundo kernel no tiene uid igual a 2, sino que es %d\n", kernel2->get_uid());
+      //exit(-1);
+    } 
     m_shader_config[0].smk_max_cta(*kernel1, *kernel2);
   }
 
