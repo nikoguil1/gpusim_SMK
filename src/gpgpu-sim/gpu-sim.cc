@@ -1919,21 +1919,25 @@ void gpgpu_sim::smk_max_cta_per_core() {
 
   kernel_info_t *kernel1 = NULL, *kernel2 = NULL;
 
-  int cont=0;
+  bool first_kernel = false, second_kernel = false;
   for (unsigned k=0; k<get_num_running_kernels(); k++){
-    if (m_running_kernels[k] != NULL && cont <2) {
-      if (cont == 0)
+    if (m_running_kernels[k] != NULL) {
+      if (first_kernel == false) {
         kernel1 = m_running_kernels[k];
-      else
-        kernel2 = m_running_kernels[k];
-      cont++;
+        first_kernel = true;
+      } else {
+        if (second_kernel == false){
+          kernel2 = m_running_kernels[k];
+          second_kernel = false;
+        }
+      }
     }
   }
 
-  if (cont == 0) // In no active kernels, return
+  if (first_kernel == false && second_kernel == false) // In no active kernels, return
     return;
 
-  assert (cont >0 && cont < 3); // Just one or two kernels
+  //assert (cont >0 && cont < 3); // Just one or two kernels
 
   if (kernel1 != NULL) { // Nico: voy a chequear el id, asuminedo que solo dos kernels se están coejecutando
     if (kernel1->get_uid() == 1) { // Nico: Pongo esto porque con VA/HS se termina el VA y el HS para a ser el primer kernel con id 2
@@ -1949,8 +1953,9 @@ void gpgpu_sim::smk_max_cta_per_core() {
     for (unsigned int c=0; c < k1_ctas % m_shader_config->n_simt_cores_per_cluster; c++)
       kernel1->max_ctas_per_core[c]++;
     }
-    else {
+    else { // Nico: No entiendo por qué pasa esto con algunos kernel
       printf("Raro: No debería haber entrado aquí porque han terminado uno de los kernel en coejecución \n o el primer kernel no tiene uid=1 sino que es %d\n", kernel1->get_uid());
+      kernel1->set_uid(1);
       //exit (-1);
     }
   }
@@ -1959,6 +1964,7 @@ void gpgpu_sim::smk_max_cta_per_core() {
   if (kernel2 != NULL) { 
     if (kernel2->get_uid()!=2){
       printf("El segundo kernel no tiene uid igual a 2, sino que es %d\n", kernel2->get_uid());
+      kernel2->set_uid(2);
       //exit(-1);
     } 
     m_shader_config[0].smk_max_cta(*kernel1, *kernel2);

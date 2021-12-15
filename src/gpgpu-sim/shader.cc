@@ -11,7 +11,7 @@
 // Redistributions in binary form must reproduce the above copyright notice,
 // this list of conditions and the following disclaimer in the documentation
 // and/or other materials provided with the distribution. Neither the name of
-// The University of British Columbia nor the names of its contributors may be
+// The University of British Columbia nor the names of its contributors may be 
 // used to endorse or promote products derived from this software without
 // specific prior written permission.
 //
@@ -47,6 +47,7 @@
 #include "stat-tool.h"
 #include "traffic_breakdown.h"
 #include "visualizer.h"
+
 
 #define PRIORITIZE_MSHR_OVER_WB 1
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
